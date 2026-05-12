@@ -42,9 +42,13 @@ builder.Services.AddHttpContextAccessor();
 builder.Services.AddInfrastructure(builder.Configuration);
 builder.Services.AddApplication();
 
-// Allow JWT key override via env var (set JWT_KEY in Railway for production)
+// Allow JWT key override via env var (set JWT_KEY in Railway for production).
+// Write the resolved key back into config so JwtService (which reads _config["Jwt:Key"])
+// always uses the same key as the JWT Bearer validation — preventing signature mismatch.
 var jwtKey = Environment.GetEnvironmentVariable("JWT_KEY")
           ?? builder.Configuration["Jwt:Key"]!;
+builder.Configuration["Jwt:Key"] = jwtKey;   // ← sync JwtService with the resolved key
+
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer(opt =>
     {

@@ -8,7 +8,17 @@ public static class DbSeeder
 {
     public static async Task SeedAsync(ApplicationDbContext context)
     {
-        await context.Database.MigrateAsync();
+        // PostgreSQL (Railway): EF Core migrations contain SQL Server-specific type names
+        // (uniqueidentifier, nvarchar) that PostgreSQL rejects. Use EnsureCreated() on a
+        // fresh PostgreSQL deployment — it creates the schema directly from the model.
+        // SQL Server (local dev): use Migrate() to apply the full migration history.
+        var isPostgres = context.Database.ProviderName?
+            .Contains("Npgsql", StringComparison.OrdinalIgnoreCase) ?? false;
+
+        if (isPostgres)
+            await context.Database.EnsureCreatedAsync();
+        else
+            await context.Database.MigrateAsync();
 
         if (await context.Users.AnyAsync()) return;
 
@@ -123,18 +133,26 @@ public static class DbSeeder
         await context.TroopPointCategories.AddRangeAsync(troopCats);
 
         var members = new List<Member>();
-        var names = new[] { ("Ahmed", "Hassan"), ("Sara", "Mohamed"), ("Omar", "Ali"), ("Nour", "Ibrahim"), ("Youssef", "Khaled") };
-        foreach (var (first, last) in names)
+        var seedNames = new[] {
+            ("Ahmed",   "Hassan",  Domain.Enums.Gender.Male,   100001),
+            ("Sara",    "Mohamed", Domain.Enums.Gender.Female, 100002),
+            ("Omar",    "Ali",     Domain.Enums.Gender.Male,   100003),
+            ("Nour",    "Ibrahim", Domain.Enums.Gender.Female, 100004),
+            ("Youssef", "Khaled",  Domain.Enums.Gender.Male,   100005),
+        };
+        foreach (var (first, last, gender, customId) in seedNames)
         {
             var m = new Member
             {
-                FirstName = first,
-                LastName = last,
-                TroopId = troop.Id,
-                GroupId = group.Id,
+                FirstName   = first,
+                LastName    = last,
+                Gender      = gender,
+                CustomId    = customId,
+                TroopId     = troop.Id,
+                GroupId     = group.Id,
                 DateOfBirth = new DateTime(2010, 1, 1)
             };
-            m.QrCode = $"SCOUT-{m.Id:N}";
+            m.QrCode = $"SCOUT-{customId}";
             members.Add(m);
         }
         await context.Members.AddRangeAsync(members);

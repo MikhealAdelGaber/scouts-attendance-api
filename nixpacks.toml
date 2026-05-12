@@ -1,0 +1,11 @@
+[phases.setup]
+nixPkgs = ["dotnet-sdk_8"]
+
+[phases.build]
+cmds = [
+  "dotnet restore src/ScoutsAttendance.API/ScoutsAttendance.API.csproj",
+  "dotnet publish src/ScoutsAttendance.API/ScoutsAttendance.API.csproj -c Release -o /app/publish --no-restore"
+]
+
+[start]
+cmd = "dotnet /app/publish/ScoutsAttendance.API.dll"

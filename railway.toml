@@ -1,6 +1,5 @@
 [build]
 builder = "nixpacks"
-buildCommand = "dotnet publish src/ScoutsAttendance.API/ScoutsAttendance.API.csproj -c Release -o /app/publish"
 
 [deploy]
 startCommand = "dotnet /app/publish/ScoutsAttendance.API.dll"

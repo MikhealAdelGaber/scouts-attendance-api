@@ -1,0 +1,22 @@
+## .NET
+bin/
+obj/
+*.user
+*.suo
+.vs/
+*.swp
+*.sln.DotSettings.user
+
+## Published output
+out/
+publish/
+
+## Secrets / local overrides
+appsettings.Development.json
+appsettings.Local.json
+*.pfx
+*.pem
+
+## OS
+.DS_Store
+Thumbs.db

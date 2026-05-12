@@ -10,15 +10,33 @@ public static class DbSeeder
     {
         // PostgreSQL (Railway): EF Core migrations contain SQL Server-specific type names
         // (uniqueidentifier, nvarchar) that PostgreSQL rejects. Use EnsureCreated() on a
-        // fresh PostgreSQL deployment — it creates the schema directly from the model.
+        // fresh deployment instead, which creates tables directly from the model.
         // SQL Server (local dev): use Migrate() to apply the full migration history.
         var isPostgres = context.Database.ProviderName?
             .Contains("Npgsql", StringComparison.OrdinalIgnoreCase) ?? false;
 
         if (isPostgres)
+        {
+            // Step 1: try to create the schema
             await context.Database.EnsureCreatedAsync();
+
+            // Step 2: verify the Users table actually exists.
+            // If a previous failed migration left only __EFMigrationsHistory behind,
+            // EnsureCreated returns false without creating model tables. Wipe and redo.
+            try
+            {
+                await context.Users.AnyAsync();
+            }
+            catch
+            {
+                await context.Database.EnsureDeletedAsync();
+                await context.Database.EnsureCreatedAsync();
+            }
+        }
         else
+        {
             await context.Database.MigrateAsync();
+        }
 
         if (await context.Users.AnyAsync()) return;
 

@@ -23,10 +23,12 @@ public static class DependencyInjection
                 // Convert postgres://user:pass@host:port/db  →  Npgsql connection string
                 var uri      = new Uri(databaseUrl);
                 var userInfo = uri.UserInfo.Split(':', 2);
+                // Railway's internal postgres runs on a private network — no SSL needed
+                var sslMode  = uri.Host.EndsWith(".railway.internal") ? "Disable" : "Prefer";
                 var npgsql   = $"Host={uri.Host};Port={uri.Port};" +
                                $"Database={uri.AbsolutePath.TrimStart('/')};" +
                                $"Username={userInfo[0]};Password={userInfo[1]};" +
-                               $"SSL Mode=Require;Trust Server Certificate=true";
+                               $"SSL Mode={sslMode};Trust Server Certificate=true";
                 opt.UseNpgsql(npgsql,
                     sql => sql.MigrationsAssembly(typeof(ApplicationDbContext).Assembly.FullName));
             }

@@ -76,6 +76,7 @@ public class LeaderboardService : ILeaderboardService
         var effectiveGroupId = ResolveGroupId(groupId);
 
         var query = _uow.Members.Query()
+            .IgnoreQueryFilters()
             .Include(m => m.Troop)
             .Include(m => m.Group)
             .Include(m => m.MemberPoints.Where(mp => !mp.IsDeleted))

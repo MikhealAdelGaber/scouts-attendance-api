@@ -135,6 +135,7 @@ public class PointsService : IPointsService
     public async Task<MemberPointsSummaryDto> GetMemberPointsAsync(Guid memberId)
     {
         var member = await _uow.Members.Query()
+            .IgnoreQueryFilters()
             .Include(m => m.Troop)
             .Include(m => m.MemberPoints).ThenInclude(mp => mp.Category)
             .FirstOrDefaultAsync(m => m.Id == memberId && !m.IsDeleted)
@@ -171,8 +172,9 @@ public class PointsService : IPointsService
         await AuthorizeForMemberAsync(dto.MemberId);
 
         var member = await _uow.Members.Query()
+            .IgnoreQueryFilters()
             .Include(m => m.Troop)
-            .FirstOrDefaultAsync(m => m.Id == dto.MemberId)
+            .FirstOrDefaultAsync(m => m.Id == dto.MemberId && !m.IsDeleted)
             ?? throw new KeyNotFoundException("Member not found");
 
         var categoryId = await EnsureMemberCategoryAsync(dto.CategoryId, member.GroupId);

@@ -49,7 +49,15 @@ public class MemberService : IMemberService
         bool?   hasNeckerchief = null,
         bool?   unassigned    = null)
     {
+        // IgnoreQueryFilters() prevents the global soft-delete filter on Troop
+        // (and other included entities) from being injected into the JOIN condition.
+        // Without it, EF Core adds "AND t.IsDeleted = FALSE" to the Troop join,
+        // which causes members whose troop was soft-deleted to be silently excluded
+        // from results (the join produces no row for them).
+        // We re-apply the Member soft-delete filter manually below.
+        // MapToDto already guards MemberPoints/Excuses with !p.IsDeleted checks.
         var query = _uow.Members.Query()
+            .IgnoreQueryFilters()
             .Include(m => m.Troop)
             .Include(m => m.Group)
             .Include(m => m.MemberPoints)
@@ -131,6 +139,7 @@ public class MemberService : IMemberService
     public async Task<MemberDto?> GetByIdAsync(Guid id)
     {
         var m = await _uow.Members.Query()
+            .IgnoreQueryFilters()
             .Include(m => m.Troop)
             .Include(m => m.Group)
             .Include(m => m.MemberPoints)
@@ -228,6 +237,7 @@ public class MemberService : IMemberService
         if (!customId.HasValue) return null;
 
         var member = await _uow.Members.Query()
+            .IgnoreQueryFilters()
             .Include(m => m.Troop)
             .Include(m => m.Group)
             .Include(m => m.MemberPoints)

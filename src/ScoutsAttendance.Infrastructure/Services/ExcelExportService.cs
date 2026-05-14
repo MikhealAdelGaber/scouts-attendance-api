@@ -47,12 +47,13 @@ public class ExcelExportService : IExcelExportService
     public async Task<byte[]> ExportMembersAsync(Guid? troopId = null)
     {
         var query = _uow.Members.Query()
+            .IgnoreQueryFilters()
             .Include(m => m.Troop)
             .Where(m => !m.IsDeleted);
 
         if (troopId.HasValue) query = query.Where(m => m.TroopId == troopId.Value);
 
-        var members = await query.OrderBy(m => m.Troop.Name).ThenBy(m => m.LastName).ToListAsync();
+        var members = await query.OrderBy(m => m.Troop == null ? "" : m.Troop.Name).ThenBy(m => m.LastName).ToListAsync();
 
         using var wb = new XLWorkbook();
         var ws = wb.Worksheets.Add("Members");

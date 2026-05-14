@@ -1,3 +1,4 @@
+using Microsoft.EntityFrameworkCore;
 using ScoutsAttendance.Application.Interfaces;
 using ScoutsAttendance.Domain.Entities;
 using ScoutsAttendance.Infrastructure.Data;
@@ -43,5 +44,33 @@ public class UnitOfWork : IUnitOfWork
     public IRepository<MemberExamScore>  MemberExamScores  { get; }
 
     public async Task<int> SaveChangesAsync() => await _context.SaveChangesAsync();
+
+    /// <inheritdoc />
+    public async Task<int> UnassignMembersFromTroopAsync(Guid troopId, DateTime updatedAt)
+    {
+        var isPostgres = _context.Database.ProviderName?
+            .Contains("Npgsql", StringComparison.OrdinalIgnoreCase) ?? false;
+
+        // Use raw SQL so the UPDATE goes straight to the database — this works even
+        // when EF's change-tracker has no knowledge of these member rows, and even
+        // when the DB schema hasn't had the NOT NULL constraint dropped yet (the
+        // DbSeeder ALTER TABLE runs at startup, but a raw UPDATE to NULL still needs
+        // the column to be nullable — which the DbSeeder ensures).
+        if (isPostgres)
+        {
+            return await _context.Database.ExecuteSqlRawAsync(
+                @"UPDATE ""Members"" SET ""TroopId"" = NULL, ""UpdatedAt"" = {0}
+                  WHERE ""TroopId"" = {1} AND ""IsDeleted"" = FALSE",
+                updatedAt, troopId);
+        }
+        else
+        {
+            return await _context.Database.ExecuteSqlRawAsync(
+                @"UPDATE [Members] SET [TroopId] = NULL, [UpdatedAt] = {0}
+                  WHERE [TroopId] = {1} AND [IsDeleted] = 0",
+                updatedAt, troopId);
+        }
+    }
+
     public void Dispose() => _context.Dispose();
 }

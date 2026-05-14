@@ -33,28 +33,58 @@ public static class DbSeeder
                 await context.Database.EnsureCreatedAsync();
             }
 
-            // Step 3: Ensure Members.TroopId is nullable (idempotent ALTER TABLE).
-            // Databases created before this change have TroopId as NOT NULL.
-            // Dropping the NOT NULL constraint lets us set TroopId = NULL when a
-            // troop is deleted, so no member data is ever lost.
+            // ── Step 3: PostgreSQL schema fixes ────────────────────────────────
+            // These ALTER statements are idempotent (PostgreSQL does not error if
+            // a column is already nullable, or if a constraint doesn't exist).
+            // We run them on every startup to guarantee the DB is in the correct
+            // state regardless of when it was first created.
+
+            // 3a. Make Members.TroopId nullable so we can set it to NULL when a
+            //     troop is deleted.  This is a no-op if the column is already nullable.
             try
             {
-                await context.Database.ExecuteSqlRawAsync(@"
-                    DO $$ BEGIN
-                        IF EXISTS (
-                            SELECT 1 FROM information_schema.columns
-                            WHERE table_name  = 'Members'
-                              AND column_name = 'TroopId'
-                              AND is_nullable = 'NO'
-                        ) THEN
-                            ALTER TABLE ""Members"" ALTER COLUMN ""TroopId"" DROP NOT NULL;
-                        END IF;
-                    END $$;
-                ");
+                await context.Database.ExecuteSqlRawAsync(
+                    @"ALTER TABLE ""Members"" ALTER COLUMN ""TroopId"" DROP NOT NULL");
             }
             catch
             {
-                // Table not yet created, or already nullable — safe to ignore.
+                // Swallow: table not yet created (EnsureCreated hasn't run yet)
+                // or column doesn't exist — harmless.
+            }
+
+            // 3b. Drop the old FK constraint (it may have been created with RESTRICT
+            //     or NO ACTION behaviour on an older deployment).  IF EXISTS means
+            //     this is safe even if the constraint was already removed or was
+            //     never created with that exact name.
+            try
+            {
+                await context.Database.ExecuteSqlRawAsync(
+                    @"ALTER TABLE ""Members"" DROP CONSTRAINT IF EXISTS ""FK_Members_Troops_TroopId""");
+            }
+            catch
+            {
+                // Safe to ignore.
+            }
+
+            // 3c. Recreate the FK with ON DELETE SET NULL so that a hard DELETE of a
+            //     Troop row (e.g. from a manual DB operation) automatically NULLs the
+            //     member's TroopId rather than deleting members or blocking the delete.
+            //     In normal app usage we only soft-delete troops, but having the
+            //     correct DB-level behaviour is an important safety net.
+            try
+            {
+                await context.Database.ExecuteSqlRawAsync(@"
+                    ALTER TABLE ""Members""
+                        ADD CONSTRAINT ""FK_Members_Troops_TroopId""
+                        FOREIGN KEY (""TroopId"")
+                        REFERENCES ""Troops""(""Id"")
+                        ON DELETE SET NULL");
+            }
+            catch
+            {
+                // Safe to ignore (e.g. constraint already exists with correct behaviour,
+                // or the Troops table doesn't exist yet on a fresh deployment where
+                // EnsureCreated hasn't finished — will be correct after the next restart).
             }
         }
         else

@@ -20,4 +20,12 @@ public interface IUnitOfWork : IDisposable
     IRepository<MemberExamScore>  MemberExamScores  { get; }
 
     Task<int> SaveChangesAsync();
+
+    /// <summary>
+    /// Directly NULL-outs TroopId for every non-deleted member belonging to
+    /// <paramref name="troopId"/> using a raw SQL UPDATE.  This bypasses EF
+    /// change-tracking so it works even if the EF model / DB schema are
+    /// temporarily out of sync.
+    /// </summary>
+    Task<int> UnassignMembersFromTroopAsync(Guid troopId, DateTime updatedAt);
 }

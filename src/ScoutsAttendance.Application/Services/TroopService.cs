@@ -103,20 +103,20 @@ public class TroopService : ITroopService
         var troop = await _uow.Troops.GetByIdAsync(id);
         if (troop is null) return false;
 
-        // Unassign all members from this troop (set TroopId = null) so no member is lost.
-        // We bypass the soft-delete query filter with IgnoreQueryFilters to catch any edge cases,
-        // but we only update active (non-deleted) members.
-        var members = await _uow.Members.Query()
-            .Where(m => m.TroopId == id && !m.IsDeleted)
-            .ToListAsync();
+        // Step 1: NULL-out TroopId for every member belonging to this troop.
+        //
+        // We use a direct raw-SQL UPDATE (via UnassignMembersFromTroopAsync) rather
+        // than loading entities through EF.  This is more reliable because:
+        //   • It bypasses EF change-tracking — no risk of stale/cached member state.
+        //   • It is a single DB round-trip (O(1) instead of O(members)).
+        //   • It works even if the EF model and DB schema are temporarily out of sync.
+        //
+        // The raw SQL runs BEFORE the troop soft-delete so the FK constraint (if it
+        // still has RESTRICT behaviour in an old deployment) is satisfied at the time
+        // the Members rows are updated.
+        await _uow.UnassignMembersFromTroopAsync(id, DateTime.UtcNow);
 
-        foreach (var member in members)
-        {
-            member.TroopId   = null;
-            member.UpdatedAt = DateTime.UtcNow;
-            _uow.Members.Update(member);
-        }
-
+        // Step 2: Soft-delete the troop itself.
         _uow.Troops.SoftDelete(troop);
         await _uow.SaveChangesAsync();
         return true;

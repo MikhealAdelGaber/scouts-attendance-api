@@ -51,13 +51,17 @@ public class TransferService : ITransferService
         var member = await _uow.Members.GetByIdAsync(dto.MemberId)
             ?? throw new KeyNotFoundException("Member not found");
 
+        if (member.TroopId == null)
+            throw new InvalidOperationException(
+                "Cannot transfer an unassigned member. Assign them to a troop first.");
+
         var toTroop = await _uow.Troops.GetByIdAsync(dto.ToTroopId)
             ?? throw new KeyNotFoundException("Target troop not found");
 
         var transfer = new Domain.Entities.Transfer
         {
             MemberId = dto.MemberId,
-            FromTroopId = member.TroopId,
+            FromTroopId = member.TroopId.Value,
             ToTroopId = dto.ToTroopId,
             TransferDate = dto.TransferDate,
             Reason = dto.Reason,

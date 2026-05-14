@@ -43,7 +43,7 @@ public class DashboardService : IDashboardService
 
         // ── 2. Members in visible troops ─────────────────────────────────────
         var members = await _uow.Members.Query()
-            .Where(m => troopIds.Contains(m.TroopId))
+            .Where(m => m.TroopId != null && troopIds.Contains(m.TroopId.Value))
             .Select(m => new { m.Id, m.TroopId })
             .ToListAsync();
 

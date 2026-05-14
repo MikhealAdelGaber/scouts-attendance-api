@@ -103,6 +103,20 @@ public class TroopService : ITroopService
         var troop = await _uow.Troops.GetByIdAsync(id);
         if (troop is null) return false;
 
+        // Unassign all members from this troop (set TroopId = null) so no member is lost.
+        // We bypass the soft-delete query filter with IgnoreQueryFilters to catch any edge cases,
+        // but we only update active (non-deleted) members.
+        var members = await _uow.Members.Query()
+            .Where(m => m.TroopId == id && !m.IsDeleted)
+            .ToListAsync();
+
+        foreach (var member in members)
+        {
+            member.TroopId   = null;
+            member.UpdatedAt = DateTime.UtcNow;
+            _uow.Members.Update(member);
+        }
+
         _uow.Troops.SoftDelete(troop);
         await _uow.SaveChangesAsync();
         return true;

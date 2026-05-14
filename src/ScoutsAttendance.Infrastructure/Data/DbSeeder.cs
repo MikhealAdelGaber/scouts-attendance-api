@@ -32,6 +32,30 @@ public static class DbSeeder
                 await context.Database.EnsureDeletedAsync();
                 await context.Database.EnsureCreatedAsync();
             }
+
+            // Step 3: Ensure Members.TroopId is nullable (idempotent ALTER TABLE).
+            // Databases created before this change have TroopId as NOT NULL.
+            // Dropping the NOT NULL constraint lets us set TroopId = NULL when a
+            // troop is deleted, so no member data is ever lost.
+            try
+            {
+                await context.Database.ExecuteSqlRawAsync(@"
+                    DO $$ BEGIN
+                        IF EXISTS (
+                            SELECT 1 FROM information_schema.columns
+                            WHERE table_name  = 'Members'
+                              AND column_name = 'TroopId'
+                              AND is_nullable = 'NO'
+                        ) THEN
+                            ALTER TABLE ""Members"" ALTER COLUMN ""TroopId"" DROP NOT NULL;
+                        END IF;
+                    END $$;
+                ");
+            }
+            catch
+            {
+                // Table not yet created, or already nullable — safe to ignore.
+            }
         }
         else
         {

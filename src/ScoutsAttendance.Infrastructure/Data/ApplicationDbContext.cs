@@ -74,7 +74,8 @@ public class ApplicationDbContext : DbContext
             e.HasOne(m => m.Troop)
                 .WithMany(t => t.Members)
                 .HasForeignKey(m => m.TroopId)
-                .OnDelete(DeleteBehavior.Restrict);
+                .IsRequired(false)
+                .OnDelete(DeleteBehavior.SetNull);
             e.HasOne(m => m.Group)
                 .WithMany(g => g.Members)
                 .HasForeignKey(m => m.GroupId)

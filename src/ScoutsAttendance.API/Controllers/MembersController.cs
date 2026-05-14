@@ -39,9 +39,10 @@ public class MembersController : ControllerBase
         [FromQuery] string? search         = null,
         [FromQuery] string? academicYear   = null,
         [FromQuery] string? region         = null,
-        [FromQuery] bool?   hasNeckerchief = null)
+        [FromQuery] bool?   hasNeckerchief = null,
+        [FromQuery] bool?   unassigned     = null)
     {
-        var result = await _service.GetAllAsync(groupId, troopId, page, pageSize, search, academicYear, region, hasNeckerchief);
+        var result = await _service.GetAllAsync(groupId, troopId, page, pageSize, search, academicYear, region, hasNeckerchief, unassigned);
         return Ok(ApiResponse<PagedResult<MemberDto>>.Ok(result));
     }
 

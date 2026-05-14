@@ -13,8 +13,8 @@ public class MemberDto
     public string  FullName       { get; set; } = string.Empty;
     public string? PhoneNumber    { get; set; }
     public DateTime DateOfBirth   { get; set; }
-    public Guid    TroopId        { get; set; }
-    public string  TroopName      { get; set; } = string.Empty;
+    public Guid?   TroopId        { get; set; }   // null = unassigned
+    public string? TroopName      { get; set; }
     public Guid    GroupId        { get; set; }
     public string  GroupName      { get; set; } = string.Empty;
     public string  QrCode         { get; set; } = string.Empty;

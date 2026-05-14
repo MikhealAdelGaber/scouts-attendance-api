@@ -9,7 +9,7 @@ public class Member : BaseEntity
     public string    LastName       { get; set; } = string.Empty;
     public string?   PhoneNumber    { get; set; }
     public DateTime  DateOfBirth    { get; set; }
-    public Guid      TroopId        { get; set; }
+    public Guid?     TroopId        { get; set; }   // null = unassigned (troop was deleted)
     public Guid      GroupId        { get; set; }
     public Guid?     UserId         { get; set; }
     public string    QrCode         { get; set; } = string.Empty;

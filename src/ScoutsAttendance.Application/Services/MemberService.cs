@@ -10,10 +10,11 @@ public interface IMemberService
     Task<PagedResult<MemberDto>> GetAllAsync(
         Guid? groupId, Guid? troopId,
         int page, int pageSize,
-        string? search       = null,
-        string? academicYear = null,
-        string? region       = null,
-        bool?   hasNeckerchief = null);
+        string? search        = null,
+        string? academicYear  = null,
+        string? region        = null,
+        bool?   hasNeckerchief = null,
+        bool?   unassigned    = null);   // true = members with no troop (TroopId IS NULL)
 
     Task<MemberDto?> GetByIdAsync(Guid id);
     Task<MemberDto>  CreateAsync(CreateMemberDto dto);
@@ -45,7 +46,8 @@ public class MemberService : IMemberService
         string? search        = null,
         string? academicYear  = null,
         string? region        = null,
-        bool?   hasNeckerchief = null)
+        bool?   hasNeckerchief = null,
+        bool?   unassigned    = null)
     {
         var query = _uow.Members.Query()
             .Include(m => m.Troop)
@@ -55,17 +57,28 @@ public class MemberService : IMemberService
             .Where(m => !m.IsDeleted);
 
         // ── Scoping ──────────────────────────────────────────────────────────
-        // Troop scope is most restrictive — takes priority over group filter
-        var effectiveTroopId = troopId ?? (_currentUser.HasTroopScope ? _currentUser.TroopId : null);
-        if (effectiveTroopId.HasValue)
+        if (unassigned == true)
         {
-            query = query.Where(m => m.TroopId == effectiveTroopId.Value);
+            // Show only members with no troop (unassigned after troop deletion)
+            query = query.Where(m => m.TroopId == null);
+            // Still scope by group if the caller is not a system admin
+            var gid = groupId ?? (_currentUser.IsSystemAdmin ? null : _currentUser.GroupId);
+            if (gid.HasValue) query = query.Where(m => m.GroupId == gid.Value);
         }
         else
         {
-            // Any non-admin user without a troop assignment is scoped to their group
-            var effectiveGroupId = groupId ?? (_currentUser.IsSystemAdmin ? null : _currentUser.GroupId);
-            if (effectiveGroupId.HasValue) query = query.Where(m => m.GroupId == effectiveGroupId.Value);
+            // Troop scope is most restrictive — takes priority over group filter
+            var effectiveTroopId = troopId ?? (_currentUser.HasTroopScope ? _currentUser.TroopId : null);
+            if (effectiveTroopId.HasValue)
+            {
+                query = query.Where(m => m.TroopId == effectiveTroopId.Value);
+            }
+            else
+            {
+                // Any non-admin user without a troop assignment is scoped to their group
+                var effectiveGroupId = groupId ?? (_currentUser.IsSystemAdmin ? null : _currentUser.GroupId);
+                if (effectiveGroupId.HasValue) query = query.Where(m => m.GroupId == effectiveGroupId.Value);
+            }
         }
 
         // ── Filters ──────────────────────────────────────────────────────────
@@ -161,7 +174,7 @@ public class MemberService : IMemberService
         member.Notes          = dto.Notes;
         member.UpdatedAt      = DateTime.UtcNow;
 
-        if (dto.TroopId.HasValue && dto.TroopId.Value != member.TroopId)
+        if (dto.TroopId.HasValue && dto.TroopId.Value != member.TroopId.GetValueOrDefault())
         {
             var troop = await _uow.Troops.GetByIdAsync(dto.TroopId.Value);
             if (troop != null) { member.TroopId = troop.Id; member.GroupId = troop.GroupId; }
@@ -232,8 +245,8 @@ public class MemberService : IMemberService
         FullName       = m.FullName,
         PhoneNumber    = m.PhoneNumber,
         DateOfBirth    = m.DateOfBirth,
-        TroopId        = m.TroopId,
-        TroopName      = m.Troop?.Name ?? string.Empty,
+        TroopId        = m.TroopId,                             // null when unassigned
+        TroopName      = m.Troop?.Name,                         // null when unassigned
         GroupId        = m.GroupId,
         GroupName      = m.Group?.Name ?? string.Empty,
         QrCode         = m.QrCode,

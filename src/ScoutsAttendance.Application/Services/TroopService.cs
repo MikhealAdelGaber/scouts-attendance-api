@@ -103,18 +103,27 @@ public class TroopService : ITroopService
         var troop = await _uow.Troops.GetByIdAsync(id);
         if (troop is null) return false;
 
-        // Step 1: NULL-out TroopId for every member belonging to this troop.
+        var now = DateTime.UtcNow;
+
+        // Step 1a: NULL-out TroopId for every MEMBER belonging to this troop.
         //
-        // We use a direct raw-SQL UPDATE (via UnassignMembersFromTroopAsync) rather
-        // than loading entities through EF.  This is more reliable because:
-        //   • It bypasses EF change-tracking — no risk of stale/cached member state.
-        //   • It is a single DB round-trip (O(1) instead of O(members)).
-        //   • It works even if the EF model and DB schema are temporarily out of sync.
+        // Raw SQL bypasses EF change-tracking and is a single round-trip regardless
+        // of member count.  It also works even if the NOT NULL constraint hasn't
+        // been dropped yet on an old DB (the DbSeeder ALTER TABLE fixes that on
+        // startup, but just in case).
+        await _uow.UnassignMembersFromTroopAsync(id, now);
+
+        // Step 1b: NULL-out TroopId for every USER (troop leaders, attendance-only
+        // users) scoped to this troop.
         //
-        // The raw SQL runs BEFORE the troop soft-delete so the FK constraint (if it
-        // still has RESTRICT behaviour in an old deployment) is satisfied at the time
-        // the Members rows are updated.
-        await _uow.UnassignMembersFromTroopAsync(id, DateTime.UtcNow);
+        // This is CRITICAL for visibility.  JWT tokens carry the TroopId claim at
+        // login and are never refreshed during the session.  If we do not clear the
+        // User.TroopId in the database, every affected user will continue to get
+        // HasTroopScope = true with the now-deleted troop's ID.  The MemberService
+        // query then adds WHERE TroopId = {old id}, which returns zero results
+        // because all members were just unassigned (TroopId = null).  Members appear
+        // to "disappear" even though they are still in the database.
+        await _uow.UnassignUsersFromTroopAsync(id, now);
 
         // Step 2: Soft-delete the troop itself.
         _uow.Troops.SoftDelete(troop);

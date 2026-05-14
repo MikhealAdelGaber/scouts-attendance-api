@@ -23,9 +23,18 @@ public interface IUnitOfWork : IDisposable
 
     /// <summary>
     /// Directly NULL-outs TroopId for every non-deleted member belonging to
-    /// <paramref name="troopId"/> using a raw SQL UPDATE.  This bypasses EF
-    /// change-tracking so it works even if the EF model / DB schema are
+    /// <paramref name="troopId"/> using a raw SQL UPDATE.  Bypasses EF
+    /// change-tracking so it works even when the EF model / DB schema are
     /// temporarily out of sync.
     /// </summary>
     Task<int> UnassignMembersFromTroopAsync(Guid troopId, DateTime updatedAt);
+
+    /// <summary>
+    /// Directly NULL-outs TroopId for every non-deleted user (e.g. troop
+    /// leaders, attendance-only users) whose account is scoped to
+    /// <paramref name="troopId"/>.  This ensures that stale JWT claims — which
+    /// carry the TroopId at login time and are never re-issued mid-session —
+    /// cannot restrict their member visibility after the troop is deleted.
+    /// </summary>
+    Task<int> UnassignUsersFromTroopAsync(Guid troopId, DateTime updatedAt);
 }

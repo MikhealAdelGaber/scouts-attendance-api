@@ -67,11 +67,32 @@ public class MemberService : IMemberService
         }
         else
         {
-            // Troop scope is most restrictive — takes priority over group filter
+            // Troop scope is most restrictive — takes priority over group filter.
+            // Prefer a caller-supplied troopId; fall back to the current user's
+            // JWT-embedded TroopId (HasTroopScope).
             var effectiveTroopId = troopId ?? (_currentUser.HasTroopScope ? _currentUser.TroopId : null);
+
             if (effectiveTroopId.HasValue)
             {
-                query = query.Where(m => m.TroopId == effectiveTroopId.Value);
+                // Guard against stale JWT claims.  A user's JWT carries their TroopId
+                // at login time and is never re-issued mid-session.  If their troop
+                // was deleted since then, HasTroopScope is still true but the troop
+                // no longer exists.  Filtering by a deleted troop's ID would return
+                // zero rows (members now have TroopId = null), making them appear
+                // "deleted" in the UI.  The global query filter on Troops already
+                // excludes soft-deleted rows, so AnyAsync returns false for deleted troops.
+                var troopStillActive = await _uow.Troops.AnyAsync(t => t.Id == effectiveTroopId.Value);
+                if (troopStillActive)
+                {
+                    query = query.Where(m => m.TroopId == effectiveTroopId.Value);
+                }
+                else
+                {
+                    // Troop was deleted — fall back to group-level visibility so the
+                    // user can still see the now-unassigned members.
+                    var gid = groupId ?? (_currentUser.IsSystemAdmin ? null : _currentUser.GroupId);
+                    if (gid.HasValue) query = query.Where(m => m.GroupId == gid.Value);
+                }
             }
             else
             {

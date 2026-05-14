@@ -72,5 +72,27 @@ public class UnitOfWork : IUnitOfWork
         }
     }
 
+    /// <inheritdoc />
+    public async Task<int> UnassignUsersFromTroopAsync(Guid troopId, DateTime updatedAt)
+    {
+        var isPostgres = _context.Database.ProviderName?
+            .Contains("Npgsql", StringComparison.OrdinalIgnoreCase) ?? false;
+
+        if (isPostgres)
+        {
+            return await _context.Database.ExecuteSqlRawAsync(
+                @"UPDATE ""Users"" SET ""TroopId"" = NULL, ""UpdatedAt"" = {0}
+                  WHERE ""TroopId"" = {1} AND ""IsDeleted"" = FALSE",
+                updatedAt, troopId);
+        }
+        else
+        {
+            return await _context.Database.ExecuteSqlRawAsync(
+                @"UPDATE [Users] SET [TroopId] = NULL, [UpdatedAt] = {0}
+                  WHERE [TroopId] = {1} AND [IsDeleted] = 0",
+                updatedAt, troopId);
+        }
+    }
+
     public void Dispose() => _context.Dispose();
 }

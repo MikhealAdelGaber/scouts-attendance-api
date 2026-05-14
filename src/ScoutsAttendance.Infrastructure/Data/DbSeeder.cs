@@ -22,15 +22,26 @@ public static class DbSeeder
 
             // Step 2: verify the Users table actually exists.
             // If a previous failed migration left only __EFMigrationsHistory behind,
-            // EnsureCreated returns false without creating model tables. Wipe and redo.
+            // EnsureCreated returns false without creating model tables.
+            //
+            // IMPORTANT: Only wipe + recreate when the table is genuinely missing
+            // (PostgreSQL error code 42P01 = undefined_table).  Do NOT wipe on any
+            // other exception (e.g., transient connection errors) — that would
+            // destroy all production data every time Railway restarts under load.
             try
             {
                 await context.Users.AnyAsync();
             }
-            catch
+            catch (Exception ex) when (IsUndefinedTableError(ex))
             {
+                // The Users table does not exist at all — safe to wipe + recreate.
                 await context.Database.EnsureDeletedAsync();
                 await context.Database.EnsureCreatedAsync();
+            }
+            catch
+            {
+                // Any other error (connection issue, timeout, etc.) — do NOT wipe.
+                // Let the app continue; the tables may be fine.
             }
 
             // ── Step 3: PostgreSQL schema fixes ────────────────────────────────
@@ -230,5 +241,33 @@ public static class DbSeeder
         await context.Members.AddRangeAsync(members);
 
         await context.SaveChangesAsync();
+    }
+
+    /// <summary>
+    /// Returns true only when the exception indicates that a relation (table)
+    /// does not exist in PostgreSQL — error code 42P01.  This is the only case
+    /// where wiping and recreating the schema is safe.  Any other exception
+    /// (transient connection error, timeout, permission issue) must NOT trigger
+    /// a wipe, or we risk destroying production data on every Railway restart.
+    /// </summary>
+    private static bool IsUndefinedTableError(Exception ex)
+    {
+        // Walk the exception chain looking for the PostgreSQL error code 42P01.
+        // We intentionally avoid a direct reference to Npgsql here so that this
+        // helper also compiles in environments where Npgsql is not loaded.
+        for (var e = ex; e is not null; e = e.InnerException)
+        {
+            var msg = e.Message;
+            var type = e.GetType().Name;
+
+            if (type == "PostgresException" &&
+                (msg.Contains("42P01") || msg.Contains("does not exist")))
+                return true;
+
+            // Npgsql also exposes SqlState as a property — check via reflection
+            var sqlState = e.GetType().GetProperty("SqlState")?.GetValue(e) as string;
+            if (sqlState == "42P01") return true;
+        }
+        return false;
     }
 }

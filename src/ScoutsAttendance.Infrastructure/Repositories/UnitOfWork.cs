@@ -94,5 +94,21 @@ public class UnitOfWork : IUnitOfWork
         }
     }
 
+    /// <inheritdoc />
+    public async Task ExecuteInTransactionAsync(Func<Task> action)
+    {
+        await using var tx = await _context.Database.BeginTransactionAsync();
+        try
+        {
+            await action();
+            await tx.CommitAsync();
+        }
+        catch
+        {
+            await tx.RollbackAsync();
+            throw;
+        }
+    }
+
     public void Dispose() => _context.Dispose();
 }

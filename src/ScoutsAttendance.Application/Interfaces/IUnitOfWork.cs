@@ -22,6 +22,13 @@ public interface IUnitOfWork : IDisposable
     Task<int> SaveChangesAsync();
 
     /// <summary>
+    /// Executes <paramref name="action"/> inside a single database transaction.
+    /// Commits on success; rolls back and re-throws on any exception.
+    /// Use this to wrap raw-SQL calls and EF saves that must succeed or fail together.
+    /// </summary>
+    Task ExecuteInTransactionAsync(Func<Task> action);
+
+    /// <summary>
     /// Directly NULL-outs TroopId for every non-deleted member belonging to
     /// <paramref name="troopId"/> using a raw SQL UPDATE.  Bypasses EF
     /// change-tracking so it works even when the EF model / DB schema are

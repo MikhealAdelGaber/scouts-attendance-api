@@ -105,29 +105,34 @@ public class TroopService : ITroopService
 
         var now = DateTime.UtcNow;
 
-        // Step 1a: NULL-out TroopId for every MEMBER belonging to this troop.
-        //
-        // Raw SQL bypasses EF change-tracking and is a single round-trip regardless
-        // of member count.  It also works even if the NOT NULL constraint hasn't
-        // been dropped yet on an old DB (the DbSeeder ALTER TABLE fixes that on
-        // startup, but just in case).
-        await _uow.UnassignMembersFromTroopAsync(id, now);
+        // Wrap all three operations in a single DB transaction so they succeed or
+        // fail together.  Without a transaction the raw-SQL UPDATEs (Steps 1a/1b)
+        // could succeed while the EF soft-delete (Step 2) fails, leaving members
+        // with TroopId = NULL but the troop still marked as active.
+        await _uow.ExecuteInTransactionAsync(async () =>
+        {
+            // Step 1a: NULL-out TroopId for every MEMBER belonging to this troop.
+            //
+            // Raw SQL bypasses EF change-tracking and is a single round-trip regardless
+            // of member count.  Members keep their GroupId — they stay in the group
+            // but are no longer assigned to any troop (shown as "Unassigned" in the UI).
+            await _uow.UnassignMembersFromTroopAsync(id, now);
 
-        // Step 1b: NULL-out TroopId for every USER (troop leaders, attendance-only
-        // users) scoped to this troop.
-        //
-        // This is CRITICAL for visibility.  JWT tokens carry the TroopId claim at
-        // login and are never refreshed during the session.  If we do not clear the
-        // User.TroopId in the database, every affected user will continue to get
-        // HasTroopScope = true with the now-deleted troop's ID.  The MemberService
-        // query then adds WHERE TroopId = {old id}, which returns zero results
-        // because all members were just unassigned (TroopId = null).  Members appear
-        // to "disappear" even though they are still in the database.
-        await _uow.UnassignUsersFromTroopAsync(id, now);
+            // Step 1b: NULL-out TroopId for every USER (troop leaders, attendance-only
+            // users) scoped to this troop.
+            //
+            // JWT tokens carry TroopId at login time and are never refreshed mid-session.
+            // Clearing User.TroopId in the DB means that on the NEXT login the user
+            // will get a token without a TroopId, restoring full group-level visibility.
+            // (HasTroopScope is now only set for AttendanceOnly, not GroupLeaders, so
+            // GroupLeaders are already safe even if their DB TroopId is stale.)
+            await _uow.UnassignUsersFromTroopAsync(id, now);
 
-        // Step 2: Soft-delete the troop itself.
-        _uow.Troops.SoftDelete(troop);
-        await _uow.SaveChangesAsync();
+            // Step 2: Soft-delete the troop itself.
+            _uow.Troops.SoftDelete(troop);
+            await _uow.SaveChangesAsync();
+        });
+
         return true;
     }
 

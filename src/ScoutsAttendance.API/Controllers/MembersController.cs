@@ -164,8 +164,31 @@ public class MembersController : ControllerBase
             return BadRequest(ApiResponse.Fail(
                 "Please select a troop from the Filters panel before importing, then try again."));
 
-        using var stream = file.OpenReadStream();
-        var result = await _import.ImportAsync(stream, effectiveTroopId.Value);
+        ImportMembersResultDto result;
+        try
+        {
+            using var stream = file.OpenReadStream();
+            result = await _import.ImportAsync(stream, effectiveTroopId.Value);
+        }
+        catch (InvalidOperationException ex) when (
+            ex.Message.Contains("Troop not found", StringComparison.OrdinalIgnoreCase))
+        {
+            // The selected troop was deleted between the page load and the import click.
+            return BadRequest(ApiResponse.Fail(
+                "The selected troop no longer exists. Please refresh the page, choose a valid troop from the Filters panel, and try again."));
+        }
+        catch (InvalidOperationException ex) when (
+            ex.Message.Contains("Failed to generate", StringComparison.OrdinalIgnoreCase))
+        {
+            return StatusCode(500, ApiResponse.Fail(
+                "Could not generate unique IDs for all members. Please try again or contact support."));
+        }
+        catch (Exception ex)
+        {
+            // ClosedXML parse errors, XML errors, and any other unexpected failures
+            return BadRequest(ApiResponse.Fail(
+                $"Could not read the uploaded file. Make sure you are uploading the correct .xlsx template without modifying the sheet structure. Detail: {ex.Message}"));
+        }
 
         var message = result.ImportedCount == 0
             ? $"No members imported. {result.SkippedCount} row(s) skipped."

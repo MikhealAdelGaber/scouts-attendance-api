@@ -221,7 +221,12 @@ public class MemberImportService : IMemberImportService
         var troop = await _db.Troops.FirstOrDefaultAsync(t => t.Id == troopId && !t.IsDeleted)
             ?? throw new InvalidOperationException("Troop not found");
 
-        using var wb = new XLWorkbook(fileStream);
+        // ClosedXML throws various exceptions (XmlException, InvalidOperationException,
+        // ClosedXMLException) if the file is corrupted, password-protected, or saved
+        // with Excel features that ClosedXML does not support (e.g. custom data
+        // validation formulas added by newer Excel versions).  Wrap in a friendlier
+        // message so the controller can return a clear 400 instead of a raw 500.
+        using var wb = OpenWorkbookSafe(fileStream);
         var ws = wb.Worksheets.First();
 
         // Build a set of existing (firstName+lastName+phone) keys to detect duplicates
@@ -381,6 +386,27 @@ public class MemberImportService : IMemberImportService
             result.ImportedCount, result.SkippedCount, _currentUser.UserId);
 
         return result;
+    }
+
+    /// <summary>
+    /// Opens the workbook and converts any ClosedXML / XML parse exception into a
+    /// descriptive <see cref="InvalidOperationException"/> so the controller can
+    /// return a friendly 400 response instead of an opaque 500.
+    /// </summary>
+    private static XLWorkbook OpenWorkbookSafe(Stream stream)
+    {
+        try
+        {
+            return new XLWorkbook(stream);
+        }
+        catch (Exception ex)
+        {
+            throw new InvalidOperationException(
+                "The uploaded file could not be opened. " +
+                "Make sure you are using the downloaded .xlsx template and have not changed " +
+                "the sheet names, added passwords, or saved it with a non-standard Excel feature. " +
+                $"Detail: {ex.Message}", ex);
+        }
     }
 
     private static string? NullIfEmpty(string? s) =>

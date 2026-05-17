@@ -17,17 +17,20 @@ public class MembersController : ControllerBase
     private readonly ITransferService     _transfer;
     private readonly IMemberImportService _import;
     private readonly ICurrentUserService  _currentUser;
+    private readonly IQrPdfExportService  _qrPdf;
 
     public MembersController(
         IMemberService service,
         ITransferService transfer,
         IMemberImportService import,
-        ICurrentUserService currentUser)
+        ICurrentUserService currentUser,
+        IQrPdfExportService qrPdf)
     {
         _service     = service;
         _transfer    = transfer;
         _import      = import;
         _currentUser = currentUser;
+        _qrPdf       = qrPdf;
     }
 
     [HttpGet]
@@ -117,6 +120,20 @@ public class MembersController : ControllerBase
         return File(bytes,
             "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             "members_import_template.xlsx");
+    }
+
+    /// <summary>
+    /// Generates a print-ready A4 PDF containing all member QR codes, grouped
+    /// by Troop (3 cards per row).  Scoping is automatic:
+    ///   SystemAdmin  → all troops &amp; all members
+    ///   GroupLeader  → own group's members
+    /// </summary>
+    [HttpGet("export-qr-pdf")]
+    [Authorize(Roles = "SystemAdmin,GroupLeader")]
+    public async Task<IActionResult> ExportQrCodesPdf()
+    {
+        var (bytes, filename) = await _qrPdf.ExportAsync();
+        return File(bytes, "application/pdf", filename);
     }
 
     /// <summary>

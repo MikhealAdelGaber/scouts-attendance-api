@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using QuestPDF.Infrastructure;
 using ScoutsAttendance.Application.Interfaces;
 using ScoutsAttendance.Application.Services;
 using ScoutsAttendance.Infrastructure.Data;
@@ -13,6 +14,9 @@ public static class DependencyInjection
 {
     public static IServiceCollection AddInfrastructure(this IServiceCollection services, IConfiguration config)
     {
+        // Set QuestPDF community licence once at startup (Settings is in root QuestPDF namespace)
+        QuestPDF.Settings.License = QuestPDF.Infrastructure.LicenseType.Community;
+
         // Railway sets DATABASE_URL for PostgreSQL add-on; fall back to SQL Server for local dev
         var databaseUrl = Environment.GetEnvironmentVariable("DATABASE_URL");
 
@@ -46,6 +50,7 @@ public static class DependencyInjection
         services.AddScoped<IExcelExportService, ExcelExportService>();
         services.AddScoped<ICustomIdService, CustomIdService>();
         services.AddScoped<IMemberImportService, MemberImportService>();
+        services.AddScoped<IQrPdfExportService, QrPdfExportService>();
 
         return services;
     }

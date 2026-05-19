@@ -39,11 +39,13 @@ public class ExcuseService : IExcuseService
 
     public async Task<IEnumerable<MemberExcuseDto>> GetAllActiveAsync(Guid? troopId = null)
     {
-        var now = DateTime.UtcNow;
+        // Compare against today's UTC date only (midnight) so that excuses stored
+        // as UTC midnight are not excluded by a same-day check at e.g. 23:59 UTC.
+        var today = DateTime.SpecifyKind(DateTime.UtcNow.Date, DateTimeKind.Utc);
         var query = _uow.MemberExcuses.Query()
             .Include(e => e.Member).ThenInclude(m => m.Troop)
             .Where(e => !e.IsDeleted && e.IsActive &&
-                        e.StartDate <= now && (e.EndDate == null || e.EndDate >= now));
+                        e.StartDate <= today && (e.EndDate == null || e.EndDate >= today));
 
         if (troopId.HasValue)
             query = query.Where(e => e.Member.TroopId == troopId.Value);
@@ -62,11 +64,20 @@ public class ExcuseService : IExcuseService
         var member = await _uow.Members.GetByIdAsync(dto.MemberId)
             ?? throw new KeyNotFoundException("Member not found");
 
+        // Normalise dates to UTC midnight so Npgsql's "timestamp with time zone"
+        // column accepts them regardless of whether ASP.NET Core deserialised them
+        // as Local or Unspecified kind.  We use the DATE portion only — time is
+        // irrelevant for excuse coverage checks.
+        var startUtc = DateTime.SpecifyKind(dto.StartDate.Date, DateTimeKind.Utc);
+        var endUtc   = dto.EndDate.HasValue
+                       ? DateTime.SpecifyKind(dto.EndDate.Value.Date, DateTimeKind.Utc)
+                       : (DateTime?)null;
+
         var excuse = new MemberExcuse
         {
             MemberId  = dto.MemberId,
-            StartDate = dto.StartDate,
-            EndDate   = dto.EndDate,
+            StartDate = startUtc,
+            EndDate   = endUtc,
             Reason    = dto.Reason,
             IsActive  = true,
             GrantedBy = _currentUser.UserId
@@ -87,7 +98,11 @@ public class ExcuseService : IExcuseService
             .FirstOrDefaultAsync(e => e.Id == id && !e.IsDeleted);
         if (excuse is null) return null;
 
-        excuse.EndDate   = dto.EndDate;
+        var endUtc = dto.EndDate.HasValue
+                     ? DateTime.SpecifyKind(dto.EndDate.Value.Date, DateTimeKind.Utc)
+                     : (DateTime?)null;
+
+        excuse.EndDate   = endUtc;
         excuse.IsActive  = dto.IsActive;
         excuse.Reason    = dto.Reason;
         excuse.UpdatedAt = DateTime.UtcNow;

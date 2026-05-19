@@ -293,7 +293,7 @@ public class MemberService : IMemberService
         Notes           = m.Notes,
         ProfileImageUrl = m.ProfileImageUrl,
         HasActiveExcuse = m.Excuses?.Any(e => !e.IsDeleted && e.IsActive &&
-                              e.StartDate <= DateTime.UtcNow &&
-                              (e.EndDate == null || e.EndDate >= DateTime.UtcNow)) ?? false
+                              e.StartDate.Date <= DateTime.UtcNow.Date &&
+                              (e.EndDate == null || e.EndDate.Value.Date >= DateTime.UtcNow.Date)) ?? false
     };
 }

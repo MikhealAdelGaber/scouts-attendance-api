@@ -92,14 +92,23 @@ namespace ScoutsAttendance.Infrastructure.Migrations
                     b.Property<bool>("IsDeleted")
                         .HasColumnType("bit");
 
-                    b.Property<decimal>("LatePointValue")
-                        .HasColumnType("decimal(18,2)");
+                    b.Property<decimal>("AbsentPoints")
+                        .HasColumnType("decimal(10,2)")
+                        .HasDefaultValue(-10m);
+
+                    b.Property<decimal>("ExcusedPoints")
+                        .HasColumnType("decimal(10,2)")
+                        .HasDefaultValue(50m);
+
+                    b.Property<decimal>("LatePoints")
+                        .HasColumnType("decimal(10,2)")
+                        .HasDefaultValue(50m);
 
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasColumnType("nvarchar(max)");
 
-                    b.Property<decimal>("PointValue")
+                    b.Property<decimal>("PresentPoints")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("decimal(10,2)")
                         .HasDefaultValue(100m);

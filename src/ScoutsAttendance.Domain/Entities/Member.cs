@@ -45,9 +45,16 @@ public class Member : BaseEntity
 
     public string FullName => $"{FirstName} {LastName}";
 
-    /// <summary>Returns true if the member has an active excuse covering <paramref name="date"/>.</summary>
-    public bool HasActiveExcuse(DateTime date) =>
-        Excuses.Any(e => !e.IsDeleted && e.IsActive &&
-                         e.StartDate <= date &&
-                         (e.EndDate == null || e.EndDate >= date));
+    /// <summary>
+    /// Returns true if the member has an active excuse whose date range covers
+    /// <paramref name="date"/>.  The comparison is date-only (time-of-day is ignored)
+    /// so that UTC event timestamps are correctly matched against excuse start/end dates.
+    /// </summary>
+    public bool HasActiveExcuse(DateTime date)
+    {
+        var d = date.Date;   // strip time component
+        return Excuses.Any(e => !e.IsDeleted && e.IsActive &&
+                                 e.StartDate.Date <= d &&
+                                 (e.EndDate == null || e.EndDate.Value.Date >= d));
+    }
 }

@@ -29,6 +29,21 @@ public class AttendanceController : ControllerBase
         return Ok(ApiResponse<IEnumerable<AttendanceDto>>.Ok(result));
     }
 
+    /// <summary>
+    /// Returns ALL members for an event with their effective attendance status.
+    /// Members with no record yet get a computed default:
+    ///   • Active excuse covering EventDate → Excused
+    ///   • Otherwise → Absent
+    /// Use this endpoint to build the attendance page so excused members are
+    /// pre-filled without requiring the user to manually set each one.
+    /// </summary>
+    [HttpGet("event/{eventId:guid}/members")]
+    public async Task<ActionResult<ApiResponse<IEnumerable<EventMemberStatusDto>>>> GetEventMembers(Guid eventId)
+    {
+        var result = await _service.GetEventMemberStatusesAsync(eventId);
+        return Ok(ApiResponse<IEnumerable<EventMemberStatusDto>>.Ok(result));
+    }
+
     [HttpGet("member/{memberId:guid}")]
     public async Task<ActionResult<ApiResponse<IEnumerable<AttendanceDto>>>> GetMemberHistory(Guid memberId)
     {

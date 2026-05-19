@@ -80,14 +80,16 @@ public class EventService : IEventService
 
         var ev = new Domain.Entities.Event
         {
-            Name           = dto.Name,
-            Description    = dto.Description,
-            EventDate      = dto.EventDate,
-            GroupId        = groupId,
-            TroopId        = dto.TroopId,
-            PointValue     = dto.PointValue,
-            LatePointValue = dto.LatePointValue,
-            CreatedBy      = _currentUser.UserId
+            Name          = dto.Name,
+            Description   = dto.Description,
+            EventDate     = dto.EventDate,
+            GroupId       = groupId,
+            TroopId       = dto.TroopId,
+            PresentPoints = dto.PresentPoints,
+            LatePoints    = dto.LatePoints,
+            ExcusedPoints = dto.ExcusedPoints,
+            AbsentPoints  = dto.AbsentPoints,
+            CreatedBy     = _currentUser.UserId
         };
 
         await _uow.Events.AddAsync(ev);
@@ -100,13 +102,15 @@ public class EventService : IEventService
         var ev = await _uow.Events.GetByIdAsync(id);
         if (ev is null) return null;
 
-        ev.Name           = dto.Name;
-        ev.Description    = dto.Description;
-        ev.EventDate      = dto.EventDate;
-        ev.IsActive       = dto.IsActive;
-        ev.PointValue     = dto.PointValue;
-        ev.LatePointValue = dto.LatePointValue;
-        ev.UpdatedAt      = DateTime.UtcNow;
+        ev.Name          = dto.Name;
+        ev.Description   = dto.Description;
+        ev.EventDate     = dto.EventDate;
+        ev.IsActive      = dto.IsActive;
+        ev.PresentPoints = dto.PresentPoints;
+        ev.LatePoints    = dto.LatePoints;
+        ev.ExcusedPoints = dto.ExcusedPoints;
+        ev.AbsentPoints  = dto.AbsentPoints;
+        ev.UpdatedAt     = DateTime.UtcNow;
 
         _uow.Events.Update(ev);
         await _uow.SaveChangesAsync();
@@ -133,8 +137,10 @@ public class EventService : IEventService
         TroopId         = e.TroopId,
         TroopName       = e.Troop?.Name,
         IsActive        = e.IsActive,
-        PointValue      = e.PointValue,
-        LatePointValue  = e.LatePointValue,
+        PresentPoints   = e.PresentPoints,
+        LatePoints      = e.LatePoints,
+        ExcusedPoints   = e.ExcusedPoints,
+        AbsentPoints    = e.AbsentPoints,
         AttendanceCount = e.AttendanceRecords?.Count(a => !a.IsDeleted) ?? 0,
         CreatedAt       = e.CreatedAt
     };

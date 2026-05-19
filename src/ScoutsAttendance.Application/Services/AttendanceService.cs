@@ -8,12 +8,13 @@ namespace ScoutsAttendance.Application.Services;
 
 public interface IAttendanceService
 {
-    Task<IEnumerable<AttendanceDto>> GetByEventAsync(Guid eventId);
-    Task<AttendanceDto>              MarkAttendanceAsync(MarkAttendanceDto dto);
-    Task<IEnumerable<AttendanceDto>> BulkMarkAsync(BulkAttendanceDto dto);
-    Task<AttendanceDto?>             MarkByQrAsync(QrAttendanceDto dto);
-    Task<AttendanceSummaryDto>       GetSummaryAsync(Guid eventId);
-    Task<IEnumerable<AttendanceDto>> GetMemberHistoryAsync(Guid memberId);
+    Task<IEnumerable<AttendanceDto>>          GetByEventAsync(Guid eventId);
+    Task<IEnumerable<EventMemberStatusDto>>   GetEventMemberStatusesAsync(Guid eventId);
+    Task<AttendanceDto>                       MarkAttendanceAsync(MarkAttendanceDto dto);
+    Task<IEnumerable<AttendanceDto>>          BulkMarkAsync(BulkAttendanceDto dto);
+    Task<AttendanceDto?>                      MarkByQrAsync(QrAttendanceDto dto);
+    Task<AttendanceSummaryDto>                GetSummaryAsync(Guid eventId);
+    Task<IEnumerable<AttendanceDto>>          GetMemberHistoryAsync(Guid memberId);
 }
 
 public class AttendanceService : IAttendanceService
@@ -27,6 +28,8 @@ public class AttendanceService : IAttendanceService
         _currentUser = currentUser;
     }
 
+    // ─── Queries ─────────────────────────────────────────────────────────────
+
     public async Task<IEnumerable<AttendanceDto>> GetByEventAsync(Guid eventId)
     {
         var records = await _uow.AttendanceRecords.Query()
@@ -39,18 +42,109 @@ public class AttendanceService : IAttendanceService
         return records.Select(MapToDto);
     }
 
+    /// <summary>
+    /// Returns ALL members applicable to the event (filtered by troop if the event is
+    /// troop-scoped) together with their effective attendance status.
+    ///
+    /// Members that already have an attendance record → their saved status is used.
+    /// Members with no record yet → status is auto-derived:
+    ///   • HasActiveExcuse covering EventDate  → Excused
+    ///   • Otherwise                           → Absent
+    /// </summary>
+    public async Task<IEnumerable<EventMemberStatusDto>> GetEventMemberStatusesAsync(Guid eventId)
+    {
+        var ev = await _uow.Events.Query()
+            .FirstOrDefaultAsync(e => e.Id == eventId && !e.IsDeleted)
+            ?? throw new KeyNotFoundException($"Event {eventId} not found");
+
+        var eventDate = ev.EventDate.Date;
+
+        // Load members scoped to this event (troop or whole group)
+        var membersQuery = _uow.Members.Query()
+            .Include(m => m.Troop)
+            .Include(m => m.Excuses)
+            .Where(m => m.GroupId == ev.GroupId && !m.IsDeleted);
+
+        if (ev.TroopId.HasValue)
+            membersQuery = membersQuery.Where(m => m.TroopId == ev.TroopId.Value);
+
+        var members = await membersQuery.ToListAsync();
+
+        // Load existing records for this event (including soft-deleted guard via !IsDeleted)
+        var existing = await _uow.AttendanceRecords.Query()
+            .Include(a => a.AutoPoints)
+            .Where(a => a.EventId == eventId && !a.IsDeleted)
+            .ToListAsync();
+
+        var existingMap = existing.ToDictionary(a => a.MemberId);
+
+        return members.Select(m =>
+        {
+            if (existingMap.TryGetValue(m.Id, out var rec))
+            {
+                return new EventMemberStatusDto
+                {
+                    MemberId          = m.Id,
+                    MemberName        = m.FullName,
+                    CustomId          = m.CustomId,
+                    Gender            = (int)m.Gender,
+                    TroopId           = m.TroopId,
+                    TroopName         = m.Troop?.Name ?? string.Empty,
+                    ProfileImageUrl   = m.ProfileImageUrl,
+                    HasActiveExcuse   = m.HasActiveExcuse(eventDate),
+                    Status            = rec.Status,
+                    HasExistingRecord = true,
+                    RecordId          = rec.Id,
+                    Notes             = rec.Notes,
+                    PointsAwarded     = (rec.AutoPoints is { IsDeleted: false })
+                                        ? rec.AutoPoints.Points : null
+                };
+            }
+            else
+            {
+                // No record yet: derive default status from excuse coverage on event date
+                var hasExcuse     = m.HasActiveExcuse(eventDate);
+                var defaultStatus = hasExcuse ? AttendanceStatus.Excused : AttendanceStatus.Absent;
+
+                return new EventMemberStatusDto
+                {
+                    MemberId          = m.Id,
+                    MemberName        = m.FullName,
+                    CustomId          = m.CustomId,
+                    Gender            = (int)m.Gender,
+                    TroopId           = m.TroopId,
+                    TroopName         = m.Troop?.Name ?? string.Empty,
+                    ProfileImageUrl   = m.ProfileImageUrl,
+                    HasActiveExcuse   = hasExcuse,
+                    Status            = defaultStatus,
+                    HasExistingRecord = false,
+                    RecordId          = null,
+                    Notes             = null,
+                    PointsAwarded     = null
+                };
+            }
+        });
+    }
+
+    // ─── Mutations ───────────────────────────────────────────────────────────
+
     public async Task<AttendanceDto> MarkAttendanceAsync(MarkAttendanceDto dto)
     {
-        // Load member with excuses to check for active excuse
+        // Load the event first — we need EventDate for excuse date comparison
+        var ev = await _uow.Events.GetByIdAsync(dto.EventId)
+            ?? throw new KeyNotFoundException($"Event {dto.EventId} not found");
+
+        // Load member with excuses to check for active excuse on the EVENT date
         var member = await _uow.Members.Query()
             .Include(m => m.Excuses)
             .FirstOrDefaultAsync(m => m.Id == dto.MemberId && !m.IsDeleted)
             ?? throw new KeyNotFoundException($"Member {dto.MemberId} not found");
 
         // Auto-promote Absent → Excused if the member has an active excuse
+        // covering the EVENT's scheduled date (not today's date).
         var effectiveStatus = dto.Status;
         if (effectiveStatus == AttendanceStatus.Absent &&
-            member.HasActiveExcuse(DateTime.UtcNow))
+            member.HasActiveExcuse(ev.EventDate))
         {
             effectiveStatus = AttendanceStatus.Excused;
         }
@@ -66,7 +160,7 @@ public class AttendanceService : IAttendanceService
             existing.UpdatedAt = DateTime.UtcNow;
             _uow.AttendanceRecords.Update(existing);
             await _uow.SaveChangesAsync();
-            await UpdateAutoPointsAsync(existing);
+            await UpdateAutoPointsAsync(existing, ev);
             return await GetAttendanceDtoAsync(existing.Id);
         }
 
@@ -82,7 +176,7 @@ public class AttendanceService : IAttendanceService
 
         await _uow.AttendanceRecords.AddAsync(record);
         await _uow.SaveChangesAsync();
-        await CreateAutoPointsAsync(record);
+        await CreateAutoPointsAsync(record, ev);
         return await GetAttendanceDtoAsync(record.Id);
     }
 
@@ -150,28 +244,28 @@ public class AttendanceService : IAttendanceService
         return records.Select(MapToDto);
     }
 
-    // ─── Auto-points: uses Event-level PointValue / LatePointValue ───────────
+    // ─── Auto-points ─────────────────────────────────────────────────────────
 
-    private async Task CreateAutoPointsAsync(AttendanceRecord record)
+    /// <summary>
+    /// Awards (or deducts) points for an attendance record based on the event's
+    /// per-status point configuration.  Negative points (e.g. AbsentPoints = -10)
+    /// are stored as-is and are correctly summed in the leaderboard.
+    /// A zero-point status produces no MemberPoints row (no clutter).
+    /// </summary>
+    private async Task CreateAutoPointsAsync(AttendanceRecord record, Domain.Entities.Event ev)
     {
-        if (record.Status == AttendanceStatus.Absent) return;
-
-        var ev = await _uow.Events.GetByIdAsync(record.EventId);
-        if (ev is null) return;
-
-        // Points come directly from the event — no global category lookup needed
         decimal pts = record.Status switch
         {
-            AttendanceStatus.Present => ev.PointValue,
-            AttendanceStatus.Late    => ev.LatePointValue,
-            AttendanceStatus.Excused => ev.PointValue,    // full points for excused
+            AttendanceStatus.Present => ev.PresentPoints,
+            AttendanceStatus.Late    => ev.LatePoints,
+            AttendanceStatus.Excused => ev.ExcusedPoints,
+            AttendanceStatus.Absent  => ev.AbsentPoints,
             _                        => 0
         };
 
-        if (pts <= 0) return;
+        // Skip if exactly 0 — no need to clutter the points history
+        if (pts == 0) return;
 
-        // Find or create the "Attendance" category scoped to this member's group
-        // (used only as a label/bucket for the leaderboard breakdown — not for value)
         var member = await _uow.Members.GetByIdAsync(record.MemberId);
         if (member is null) return;
 
@@ -182,7 +276,7 @@ public class AttendanceService : IAttendanceService
         {
             MemberId              = record.MemberId,
             MemberPointCategoryId = category.Id,
-            Points                = pts,
+            Points                = pts,   // can be negative for Absent
             Date                  = DateTime.UtcNow,
             Note                  = $"Auto: {record.Status} — {ev.Name}",
             AddedBy               = _currentUser.UserId,
@@ -193,14 +287,34 @@ public class AttendanceService : IAttendanceService
         await _uow.SaveChangesAsync();
     }
 
+    private async Task UpdateAutoPointsAsync(AttendanceRecord record, Domain.Entities.Event ev)
+    {
+        // Unlink and soft-delete ALL previously linked auto-point rows so that
+        // the one-to-one Include never hits "sequence contains more than one element".
+        var linked = await _uow.MemberPoints.Query()
+            .Where(mp => mp.AttendanceRecordId == record.Id)
+            .ToListAsync();
+
+        foreach (var mp in linked)
+        {
+            mp.AttendanceRecordId = null;
+            mp.IsDeleted          = true;
+            mp.UpdatedAt          = DateTime.UtcNow;
+            _uow.MemberPoints.Update(mp);
+        }
+
+        if (linked.Count > 0)
+            await _uow.SaveChangesAsync();
+
+        await CreateAutoPointsAsync(record, ev);
+    }
+
     /// <summary>
     /// Returns the "Attendance" MemberPointCategory scoped to the given group,
     /// creating it if it does not yet exist so points are never silently dropped.
     /// </summary>
     private async Task<Domain.Entities.MemberPointCategory?> GetOrSeedAttendanceCategoryAsync(Guid groupId)
     {
-        // Filter by GroupId to avoid "sequence contains more than one element" when
-        // multiple groups each have their own "Attendance" category.
         var category = await _uow.MemberPointCategories.FindSingleAsync(
             c => c.Name == "Attendance" && !c.IsDeleted && c.GroupId == groupId);
 
@@ -217,28 +331,7 @@ public class AttendanceService : IAttendanceService
         return category;
     }
 
-    private async Task UpdateAutoPointsAsync(AttendanceRecord record)
-    {
-        // Find ALL auto-point records linked to this attendance record (including previously
-        // soft-deleted ones) and unlink them. Without this, EF's one-to-one Include throws
-        // "sequence contains more than one element" on the second+ status change.
-        var linked = await _uow.MemberPoints.Query()
-            .Where(mp => mp.AttendanceRecordId == record.Id)
-            .ToListAsync();
-
-        foreach (var mp in linked)
-        {
-            mp.AttendanceRecordId = null;   // unlink FK so Include never finds stale rows
-            mp.IsDeleted          = true;
-            mp.UpdatedAt          = DateTime.UtcNow;
-            _uow.MemberPoints.Update(mp);
-        }
-
-        if (linked.Count > 0)
-            await _uow.SaveChangesAsync();
-
-        await CreateAutoPointsAsync(record);
-    }
+    // ─── Helpers ─────────────────────────────────────────────────────────────
 
     private async Task<AttendanceDto> GetAttendanceDtoAsync(Guid id)
     {
@@ -264,7 +357,6 @@ public class AttendanceService : IAttendanceService
         StatusName    = a.Status.ToString(),
         Notes         = a.Notes,
         MarkedAt      = a.MarkedAt,
-        // Guard: only use AutoPoints if it hasn't been soft-deleted (stale linked rows)
         PointsAwarded = (a.AutoPoints is { IsDeleted: false }) ? a.AutoPoints.Points : null
     };
 }

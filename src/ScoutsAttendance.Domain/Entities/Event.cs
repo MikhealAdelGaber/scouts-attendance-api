@@ -12,10 +12,14 @@ public class Event : BaseEntity
     public bool     IsActive    { get; set; } = true;
     public Guid     CreatedBy   { get; set; }
 
-    /// <summary>Points awarded when a member is marked Present or Excused for this event.</summary>
-    public decimal  PointValue      { get; set; } = 100m;
+    /// <summary>Points awarded when a member is marked Present for this event.</summary>
+    public decimal  PresentPoints   { get; set; } = 100m;
     /// <summary>Points awarded when a member is marked Late for this event.</summary>
-    public decimal  LatePointValue  { get; set; } = 50m;
+    public decimal  LatePoints      { get; set; } = 50m;
+    /// <summary>Points awarded when a member is marked Excused for this event.</summary>
+    public decimal  ExcusedPoints   { get; set; } = 50m;
+    /// <summary>Points applied when a member is marked Absent (can be negative).</summary>
+    public decimal  AbsentPoints    { get; set; } = -10m;
 
     public Group  Group { get; set; } = null!;
     public Troop? Troop { get; set; }

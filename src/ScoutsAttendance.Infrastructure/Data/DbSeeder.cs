@@ -173,6 +173,40 @@ public static class DbSeeder
                     @"ALTER TABLE ""Members"" ADD COLUMN IF NOT EXISTS ""ProfileImageUrl"" TEXT");
             }
             catch { /* safe */ }
+
+            // ── 3o–3r. Events table point configuration columns ───────────────────
+            // AddEventPointsConfig migration: rename PointValue→PresentPoints and
+            // LatePointValue→LatePoints, then add ExcusedPoints and AbsentPoints.
+            //
+            // RENAME is NOT idempotent (errors if already renamed), so wrap each in its
+            // own try/catch.  ADD COLUMN IF NOT EXISTS is inherently idempotent.
+            try
+            {
+                await context.Database.ExecuteSqlRawAsync(
+                    @"ALTER TABLE ""Events"" RENAME COLUMN ""PointValue"" TO ""PresentPoints""");
+            }
+            catch { /* already renamed or column doesn't exist — safe to ignore */ }
+
+            try
+            {
+                await context.Database.ExecuteSqlRawAsync(
+                    @"ALTER TABLE ""Events"" RENAME COLUMN ""LatePointValue"" TO ""LatePoints""");
+            }
+            catch { /* already renamed — safe */ }
+
+            try
+            {
+                await context.Database.ExecuteSqlRawAsync(
+                    @"ALTER TABLE ""Events"" ADD COLUMN IF NOT EXISTS ""ExcusedPoints"" DECIMAL(10,2) NOT NULL DEFAULT 50");
+            }
+            catch { /* safe */ }
+
+            try
+            {
+                await context.Database.ExecuteSqlRawAsync(
+                    @"ALTER TABLE ""Events"" ADD COLUMN IF NOT EXISTS ""AbsentPoints"" DECIMAL(10,2) NOT NULL DEFAULT -10");
+            }
+            catch { /* safe */ }
         }
         else
         {

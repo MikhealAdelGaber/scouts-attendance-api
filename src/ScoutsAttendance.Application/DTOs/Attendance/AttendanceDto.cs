@@ -56,3 +56,26 @@ public class AttendanceSummaryDto
     public int Excused { get; set; }
     public double AttendanceRate { get; set; }
 }
+
+/// <summary>
+/// A member's effective attendance status for a specific event.
+/// Includes members who haven't been explicitly marked yet — their status is
+/// derived from active excuses covering the event date (Excused) or defaults to Absent.
+/// </summary>
+public class EventMemberStatusDto
+{
+    public Guid             MemberId          { get; set; }
+    public string           MemberName        { get; set; } = string.Empty;
+    public int              CustomId          { get; set; }
+    public int              Gender            { get; set; }   // 1=Male, 2=Female
+    public Guid?            TroopId           { get; set; }
+    public string           TroopName         { get; set; } = string.Empty;
+    public string?          ProfileImageUrl   { get; set; }
+    public bool             HasActiveExcuse   { get; set; }  // covers event date
+    public AttendanceStatus Status            { get; set; }
+    public string           StatusName        => Status.ToString();
+    public bool             HasExistingRecord { get; set; }
+    public Guid?            RecordId          { get; set; }
+    public string?          Notes             { get; set; }
+    public decimal?         PointsAwarded     { get; set; }
+}

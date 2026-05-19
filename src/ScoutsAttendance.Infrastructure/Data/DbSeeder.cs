@@ -307,7 +307,7 @@ public static class DbSeeder
                 CustomId    = customId,
                 TroopId     = troop.Id,
                 GroupId     = group.Id,
-                DateOfBirth = new DateTime(2010, 1, 1)
+                DateOfBirth = new DateTime(2010, 1, 1, 0, 0, 0, DateTimeKind.Utc)
             };
             m.QrCode = $"SCOUT-{customId}";
             members.Add(m);

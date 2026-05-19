@@ -20,6 +20,12 @@ public static class DependencyInjection
         // Railway sets DATABASE_URL for PostgreSQL add-on; fall back to SQL Server for local dev
         var databaseUrl = Environment.GetEnvironmentVariable("DATABASE_URL");
 
+        // Npgsql 8 requires DateTime values to have Kind=Utc when writing to
+        // "timestamp with time zone" columns.  Enable legacy behaviour as a safety net so
+        // that any Unspecified-kind DateTime (e.g. from user input or date-only values)
+        // is treated as local/UTC rather than throwing at runtime.
+        AppContext.SetSwitch("Npgsql.EnableLegacyTimestampBehavior", true);
+
         services.AddDbContext<ApplicationDbContext>(opt =>
         {
             if (!string.IsNullOrEmpty(databaseUrl))

@@ -353,7 +353,7 @@ public class MemberImportService : IMemberImportService
                 Notes          = notes,
                 TroopId        = troop.Id,
                 GroupId        = troop.GroupId,
-                DateOfBirth    = new DateTime(2000, 1, 1)    // default — no DOB column in template
+                DateOfBirth    = new DateTime(2000, 1, 1, 0, 0, 0, DateTimeKind.Utc)    // default — no DOB column in template
             };
             member.QrCode = _qrCode.GenerateQrCodeToken(customId);
 

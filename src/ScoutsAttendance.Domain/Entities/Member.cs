@@ -29,6 +29,7 @@ public class Member : BaseEntity
     public string?   FatherPhone    { get; set; }
     public string?   MotherPhone    { get; set; }
     public string?   Notes          { get; set; }   // Free-text notes
+    public string?   ProfileImageUrl { get; set; }  // Cloudinary URL or local relative path
 
     // ─── Navigation ───────────────────────────────────────────────────────────
     public Troop?  Troop  { get; set; }

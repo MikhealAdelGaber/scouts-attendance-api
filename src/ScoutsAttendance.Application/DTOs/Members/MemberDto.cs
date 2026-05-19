@@ -29,8 +29,9 @@ public class MemberDto
     public string? AcademicYear    { get; set; }
     public string? FatherPhone     { get; set; }
     public string? MotherPhone     { get; set; }
-    public string? Notes           { get; set; }
-    public bool    HasActiveExcuse { get; set; }
+    public string? Notes            { get; set; }
+    public string? ProfileImageUrl  { get; set; }
+    public bool    HasActiveExcuse  { get; set; }
 }
 
 public class CreateMemberDto

@@ -102,6 +102,7 @@ if (app.Environment.IsDevelopment())
 
 app.UseMiddleware<ExceptionMiddleware>();
 app.UseCors("AllowAngular");
+app.UseStaticFiles();   // serves wwwroot/uploads/members/* for LocalPhotoService
 // Skip HTTPS redirect on Railway (SSL is terminated at the proxy level)
 if (app.Environment.IsDevelopment())
     app.UseHttpsRedirection();

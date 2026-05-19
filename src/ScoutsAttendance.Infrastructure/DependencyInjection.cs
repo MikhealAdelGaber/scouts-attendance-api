@@ -52,6 +52,18 @@ public static class DependencyInjection
         services.AddScoped<IMemberImportService, MemberImportService>();
         services.AddScoped<IQrPdfExportService, QrPdfExportService>();
 
+        // Photo storage: Cloudinary when CLOUDINARY_URL is set, local wwwroot otherwise
+        var cloudinaryUrl = Environment.GetEnvironmentVariable("CLOUDINARY_URL");
+        if (!string.IsNullOrWhiteSpace(cloudinaryUrl))
+        {
+            // CloudinaryPhotoService needs an HttpClient for downloading photo bytes (PDF embedding)
+            services.AddHttpClient<IPhotoService, CloudinaryPhotoService>();
+        }
+        else
+        {
+            services.AddScoped<IPhotoService, LocalPhotoService>();
+        }
+
         return services;
     }
 }

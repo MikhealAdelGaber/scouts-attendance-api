@@ -45,43 +45,28 @@ public static class DbSeeder
             }
 
             // ── Step 3: PostgreSQL schema fixes ────────────────────────────────
-            // These ALTER statements are idempotent (PostgreSQL does not error if
-            // a column is already nullable, or if a constraint doesn't exist).
-            // We run them on every startup to guarantee the DB is in the correct
-            // state regardless of when it was first created.
+            // All ALTER statements are idempotent: ADD COLUMN IF NOT EXISTS / DROP NOT NULL
+            // never errors on re-deployments or fresh DBs.  They run on EVERY startup so
+            // the schema converges to the correct state regardless of when Railway first
+            // created the database (EnsureCreated only creates tables once; subsequent
+            // columns added via SQL Server migrations must be added here for PostgreSQL).
 
-            // 3a. Make Members.TroopId nullable so we can set it to NULL when a
-            //     troop is deleted.  This is a no-op if the column is already nullable.
+            // ── 3a. TroopId: make nullable (required for unassigning members when a
+            //        troop is deleted).  No-op if already nullable.
             try
             {
                 await context.Database.ExecuteSqlRawAsync(
                     @"ALTER TABLE ""Members"" ALTER COLUMN ""TroopId"" DROP NOT NULL");
             }
-            catch
-            {
-                // Swallow: table not yet created (EnsureCreated hasn't run yet)
-                // or column doesn't exist — harmless.
-            }
+            catch { /* swallow — column may not exist yet on a brand-new deployment */ }
 
-            // 3b. Drop the old FK constraint (it may have been created with RESTRICT
-            //     or NO ACTION behaviour on an older deployment).  IF EXISTS means
-            //     this is safe even if the constraint was already removed or was
-            //     never created with that exact name.
+            // ── 3b/3c. FK constraint with ON DELETE SET NULL (idempotent via IF EXISTS)
             try
             {
                 await context.Database.ExecuteSqlRawAsync(
                     @"ALTER TABLE ""Members"" DROP CONSTRAINT IF EXISTS ""FK_Members_Troops_TroopId""");
             }
-            catch
-            {
-                // Safe to ignore.
-            }
-
-            // 3c. Recreate the FK with ON DELETE SET NULL so that a hard DELETE of a
-            //     Troop row (e.g. from a manual DB operation) automatically NULLs the
-            //     member's TroopId rather than deleting members or blocking the delete.
-            //     In normal app usage we only soft-delete troops, but having the
-            //     correct DB-level behaviour is an important safety net.
+            catch { /* safe to ignore */ }
             try
             {
                 await context.Database.ExecuteSqlRawAsync(@"
@@ -91,12 +76,101 @@ public static class DbSeeder
                         REFERENCES ""Troops""(""Id"")
                         ON DELETE SET NULL");
             }
-            catch
+            catch { /* safe to ignore — constraint may already exist with correct behaviour */ }
+
+            // ── 3d–3n. ADD COLUMN IF NOT EXISTS for every column added after InitialCreate.
+            //    Covers the case where Railway's DB was created at an earlier model snapshot
+            //    and subsequent migrations (which run on SQL Server via Migrate()) were never
+            //    applied to the PostgreSQL instance.
+            //
+            //    Order matters for NOT NULL columns: add the column with a DEFAULT so existing
+            //    rows get a value, then we can leave the DEFAULT in place (PostgreSQL allows it).
+
+            // From AddMajorFeatures migration
+            foreach (var sql in new[]
             {
-                // Safe to ignore (e.g. constraint already exists with correct behaviour,
-                // or the Troops table doesn't exist yet on a fresh deployment where
-                // EnsureCreated hasn't finished — will be correct after the next restart).
+                @"ALTER TABLE ""Members"" ADD COLUMN IF NOT EXISTS ""AcademicYear"" TEXT",
+                @"ALTER TABLE ""Members"" ADD COLUMN IF NOT EXISTS ""Address""     TEXT",
+                @"ALTER TABLE ""Members"" ADD COLUMN IF NOT EXISTS ""FatherPhone"" TEXT",
+                @"ALTER TABLE ""Members"" ADD COLUMN IF NOT EXISTS ""MotherPhone"" TEXT",
+                @"ALTER TABLE ""Members"" ADD COLUMN IF NOT EXISTS ""YearJoined""  INTEGER",
+                @"ALTER TABLE ""Members"" ADD COLUMN IF NOT EXISTS ""HasNeckerchief"" BOOLEAN NOT NULL DEFAULT false",
+            })
+            {
+                try { await context.Database.ExecuteSqlRawAsync(sql); } catch { /* safe */ }
             }
+
+            // From RemoveTalaeaAddRegion migration
+            try
+            {
+                await context.Database.ExecuteSqlRawAsync(
+                    @"ALTER TABLE ""Members"" ADD COLUMN IF NOT EXISTS ""Region"" TEXT");
+            }
+            catch { /* safe */ }
+
+            // From AddMemberNotes migration
+            try
+            {
+                await context.Database.ExecuteSqlRawAsync(
+                    @"ALTER TABLE ""Members"" ADD COLUMN IF NOT EXISTS ""Notes"" TEXT");
+            }
+            catch { /* safe */ }
+
+            // From AddMemberGenderAndCustomId migration — CRITICAL for import
+            // Gender is NOT NULL (1=Male default); CustomId is NOT NULL (0 placeholder).
+            try
+            {
+                await context.Database.ExecuteSqlRawAsync(
+                    @"ALTER TABLE ""Members"" ADD COLUMN IF NOT EXISTS ""Gender"" INTEGER NOT NULL DEFAULT 1");
+            }
+            catch { /* safe */ }
+            try
+            {
+                await context.Database.ExecuteSqlRawAsync(
+                    @"ALTER TABLE ""Members"" ADD COLUMN IF NOT EXISTS ""CustomId"" INTEGER NOT NULL DEFAULT 0");
+            }
+            catch { /* safe */ }
+
+            // Backfill existing rows that still have CustomId = 0 (i.e. rows that existed
+            // before the column was added) with sequential odd IDs starting from 100001.
+            try
+            {
+                await context.Database.ExecuteSqlRawAsync(@"
+                    WITH numbered AS (
+                        SELECT ""Id"", ROW_NUMBER() OVER (ORDER BY ""CreatedAt"", ""Id"") AS rn
+                        FROM   ""Members""
+                        WHERE  ""CustomId"" = 0
+                    )
+                    UPDATE ""Members""
+                    SET    ""CustomId"" = 100001 + ((numbered.rn - 1) * 2)
+                    FROM   numbered
+                    WHERE  ""Members"".""Id"" = numbered.""Id""");
+            }
+            catch { /* safe — no rows may need backfilling */ }
+
+            // Unique index on CustomId (CREATE UNIQUE INDEX IF NOT EXISTS is safe to repeat)
+            try
+            {
+                await context.Database.ExecuteSqlRawAsync(
+                    @"CREATE UNIQUE INDEX IF NOT EXISTS ""IX_Members_CustomId"" ON ""Members"" (""CustomId"")");
+            }
+            catch { /* safe */ }
+
+            // Unique index on QrCode (should already exist from EnsureCreated, but guard anyway)
+            try
+            {
+                await context.Database.ExecuteSqlRawAsync(
+                    @"CREATE UNIQUE INDEX IF NOT EXISTS ""IX_Members_QrCode"" ON ""Members"" (""QrCode"")");
+            }
+            catch { /* safe */ }
+
+            // ProfileImageUrl — added in AddMemberProfileImageUrl migration
+            try
+            {
+                await context.Database.ExecuteSqlRawAsync(
+                    @"ALTER TABLE ""Members"" ADD COLUMN IF NOT EXISTS ""ProfileImageUrl"" TEXT");
+            }
+            catch { /* safe */ }
         }
         else
         {

@@ -5,6 +5,7 @@ using ScoutsAttendance.Application.DTOs.Members;
 using ScoutsAttendance.Application.DTOs.Transfers;
 using ScoutsAttendance.Application.Interfaces;
 using ScoutsAttendance.Application.Services;
+using ScoutsAttendance.Domain.Entities;
 
 namespace ScoutsAttendance.API.Controllers;
 
@@ -18,19 +19,25 @@ public class MembersController : ControllerBase
     private readonly IMemberImportService _import;
     private readonly ICurrentUserService  _currentUser;
     private readonly IQrPdfExportService  _qrPdf;
+    private readonly IPhotoService        _photo;
+    private readonly IUnitOfWork          _uow;
 
     public MembersController(
         IMemberService service,
         ITransferService transfer,
         IMemberImportService import,
         ICurrentUserService currentUser,
-        IQrPdfExportService qrPdf)
+        IQrPdfExportService qrPdf,
+        IPhotoService photo,
+        IUnitOfWork uow)
     {
         _service     = service;
         _transfer    = transfer;
         _import      = import;
         _currentUser = currentUser;
         _qrPdf       = qrPdf;
+        _photo       = photo;
+        _uow         = uow;
     }
 
     [HttpGet]
@@ -185,9 +192,15 @@ public class MembersController : ControllerBase
         }
         catch (Exception ex)
         {
-            // ClosedXML parse errors, XML errors, and any other unexpected failures
+            // ClosedXML parse errors, XML errors, DbUpdateException, and any other
+            // unexpected failures.  Walk the inner exception chain so we surface the
+            // actual DB / format error rather than the generic EF Core wrapper message.
+            var rootMessage = ex.Message;
+            for (var inner = ex.InnerException; inner != null; inner = inner.InnerException)
+                rootMessage = inner.Message;   // innermost = most specific (e.g. Npgsql error)
+
             return BadRequest(ApiResponse.Fail(
-                $"Could not read the uploaded file. Make sure you are uploading the correct .xlsx template without modifying the sheet structure. Detail: {ex.Message}"));
+                $"Import failed. Make sure you are uploading the correct .xlsx template without modifying the sheet structure. Detail: {rootMessage}"));
         }
 
         var message = result.ImportedCount == 0
@@ -195,5 +208,78 @@ public class MembersController : ControllerBase
             : $"{result.ImportedCount} member(s) imported successfully. {result.SkippedCount} row(s) skipped.";
 
         return Ok(ApiResponse<ImportMembersResultDto>.Ok(result, message));
+    }
+
+    /// <summary>
+    /// Uploads a profile photo for a member.
+    /// Accepts JPEG or PNG, max 2 MB.
+    /// Returns the public image URL stored on the member record.
+    /// </summary>
+    [HttpPost("{id:guid}/upload-photo")]
+    [Authorize(Roles = "SystemAdmin,GroupLeader")]
+    public async Task<ActionResult<ApiResponse<object>>> UploadPhoto(Guid id, IFormFile photo)
+    {
+        if (photo is null || photo.Length == 0)
+            return BadRequest(ApiResponse.Fail("No file uploaded"));
+
+        if (photo.Length > 2 * 1024 * 1024)
+            return BadRequest(ApiResponse.Fail("Photo exceeds 2 MB limit"));
+
+        var ext = Path.GetExtension(photo.FileName).ToLowerInvariant();
+        if (ext is not (".jpg" or ".jpeg" or ".png"))
+            return BadRequest(ApiResponse.Fail("Only JPG and PNG images are accepted"));
+
+        // Load member
+        var member = await _uow.Members.GetByIdAsync(id);
+        if (member is null || member.IsDeleted)
+            return NotFound(ApiResponse.Fail("Member not found"));
+
+        // Delete old photo (best-effort)
+        if (!string.IsNullOrWhiteSpace(member.ProfileImageUrl))
+        {
+            try { await _photo.DeleteAsync(member.ProfileImageUrl); } catch { /* ignore */ }
+        }
+
+        // Upload new photo
+        string imageUrl;
+        try
+        {
+            await using var stream = photo.OpenReadStream();
+            imageUrl = await _photo.UploadAsync(stream, photo.FileName, id.ToString());
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(500, ApiResponse.Fail($"Photo upload failed: {ex.Message}"));
+        }
+
+        // Persist URL on the member
+        member.ProfileImageUrl = imageUrl;
+        member.UpdatedAt       = DateTime.UtcNow;
+        _uow.Members.Update(member);
+        await _uow.SaveChangesAsync();
+
+        return Ok(ApiResponse<object>.Ok(new { imageUrl }, "Photo uploaded successfully"));
+    }
+
+    /// <summary>Removes the profile photo for a member.</summary>
+    [HttpDelete("{id:guid}/photo")]
+    [Authorize(Roles = "SystemAdmin,GroupLeader")]
+    public async Task<ActionResult<ApiResponse>> DeletePhoto(Guid id)
+    {
+        var member = await _uow.Members.GetByIdAsync(id);
+        if (member is null || member.IsDeleted)
+            return NotFound(ApiResponse.Fail("Member not found"));
+
+        if (!string.IsNullOrWhiteSpace(member.ProfileImageUrl))
+        {
+            try { await _photo.DeleteAsync(member.ProfileImageUrl); } catch { /* ignore */ }
+        }
+
+        member.ProfileImageUrl = null;
+        member.UpdatedAt       = DateTime.UtcNow;
+        _uow.Members.Update(member);
+        await _uow.SaveChangesAsync();
+
+        return Ok(ApiResponse.Ok("Photo removed"));
     }
 }

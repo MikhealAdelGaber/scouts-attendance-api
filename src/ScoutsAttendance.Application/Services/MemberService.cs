@@ -290,7 +290,8 @@ public class MemberService : IMemberService
         AcademicYear   = m.AcademicYear,
         FatherPhone    = m.FatherPhone,
         MotherPhone    = m.MotherPhone,
-        Notes          = m.Notes,
+        Notes           = m.Notes,
+        ProfileImageUrl = m.ProfileImageUrl,
         HasActiveExcuse = m.Excuses?.Any(e => !e.IsDeleted && e.IsActive &&
                               e.StartDate <= DateTime.UtcNow &&
                               (e.EndDate == null || e.EndDate >= DateTime.UtcNow)) ?? false

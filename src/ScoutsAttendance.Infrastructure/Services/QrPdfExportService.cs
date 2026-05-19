@@ -18,6 +18,7 @@ public sealed class QrPdfExportService : IQrPdfExportService
     private readonly IUnitOfWork         _uow;
     private readonly ICurrentUserService _currentUser;
     private readonly IQrCodeService      _qrCode;
+    private readonly IPhotoService       _photo;
 
     // ── Brand colours (match the Angular app) ────────────────────────────────
     private const string PrimaryDark  = "#1a237e";
@@ -31,11 +32,13 @@ public sealed class QrPdfExportService : IQrPdfExportService
     public QrPdfExportService(
         IUnitOfWork uow,
         ICurrentUserService currentUser,
-        IQrCodeService qrCode)
+        IQrCodeService qrCode,
+        IPhotoService photo)
     {
         _uow         = uow;
         _currentUser = currentUser;
         _qrCode      = qrCode;
+        _photo       = photo;
     }
 
     public async Task<(byte[] Bytes, string Filename)> ExportAsync()
@@ -85,13 +88,24 @@ public sealed class QrPdfExportService : IQrPdfExportService
         var safeScope = string.Concat(scopeLabel.Split(Path.GetInvalidFileNameChars()));
         var filename  = $"QR-Codes-{safeScope}-{DateTime.UtcNow:yyyy-MM-dd}.pdf";
 
-        // ── 4. Build PDF ──────────────────────────────────────────────────────
+        // ── 4. Pre-fetch profile photos (best-effort, in parallel) ────────────
+        var photoMap = new Dictionary<Guid, byte[]?>();
+        await Task.WhenAll(members.Select(async m =>
+        {
+            if (!string.IsNullOrWhiteSpace(m.ProfileImageUrl))
+            {
+                try { photoMap[m.Id] = await _photo.GetPhotoBytesAsync(m.ProfileImageUrl); }
+                catch { photoMap[m.Id] = null; }
+            }
+        }));
+
+        // ── 5. Build PDF ──────────────────────────────────────────────────────
         var pdfBytes = Document.Create(container =>
         {
             BuildCoverPage(container, scopeLabel, members.Count, troopGroups.Count);
 
             foreach (var (troopName, troopMembers) in troopGroups)
-                BuildTroopPage(container, troopName, troopMembers);
+                BuildTroopPage(container, troopName, troopMembers, photoMap);
         })
         .GeneratePdf();
 
@@ -150,7 +164,8 @@ public sealed class QrPdfExportService : IQrPdfExportService
     private void BuildTroopPage(
         IDocumentContainer container,
         string troopName,
-        List<Member> troopMembers)
+        List<Member> troopMembers,
+        Dictionary<Guid, byte[]?> photoMap)
     {
         container.Page(page =>
         {
@@ -190,7 +205,10 @@ public sealed class QrPdfExportService : IQrPdfExportService
                     });
 
                     foreach (var member in troopMembers)
-                        BuildMemberCell(table, member);
+                    {
+                        photoMap.TryGetValue(member.Id, out var photoBytes);
+                        BuildMemberCell(table, member, photoBytes);
+                    }
 
                     // Pad the last row with empty cells so the grid stays aligned
                     var remainder = troopMembers.Count % 3;
@@ -225,7 +243,7 @@ public sealed class QrPdfExportService : IQrPdfExportService
 
     // ── Single member card cell ───────────────────────────────────────────────
 
-    private void BuildMemberCell(TableDescriptor table, Member member)
+    private void BuildMemberCell(TableDescriptor table, Member member, byte[]? photoBytes)
     {
         // Generate QR PNG bytes — encodes "SCOUT-XXXXXX"
         var qrBytes = _qrCode.GenerateQrCodeImage(member.QrCode);
@@ -237,6 +255,17 @@ public sealed class QrPdfExportService : IQrPdfExportService
             .Column(col =>
             {
                 col.Spacing(3);
+
+                // ── Profile photo (optional, 50×50 circle-like square) ──────
+                if (photoBytes is { Length: > 0 })
+                {
+                    col.Item()
+                        .AlignCenter()
+                        .Width(50)
+                        .Height(50)
+                        .Image(photoBytes)
+                        .FitArea();
+                }
 
                 // QR image — 90pt ≈ 3.2 cm, well above the 3 cm minimum
                 col.Item()

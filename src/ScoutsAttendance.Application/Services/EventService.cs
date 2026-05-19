@@ -78,11 +78,16 @@ public class EventService : IEventService
                       ?? throw new InvalidOperationException("User has no group assigned");
         }
 
+        // Normalise to UTC midnight of the chosen calendar date so timezone drift
+        // (e.g. Egypt UTC+2 sending "May 20 local" as "May 19 22:00 UTC") never
+        // shifts the stored date to the previous day.
+        var eventDateUtc = DateTime.SpecifyKind(dto.EventDate.Date, DateTimeKind.Utc);
+
         var ev = new Domain.Entities.Event
         {
             Name          = dto.Name,
             Description   = dto.Description,
-            EventDate     = dto.EventDate,
+            EventDate     = eventDateUtc,
             GroupId       = groupId,
             TroopId       = dto.TroopId,
             PresentPoints = dto.PresentPoints,
@@ -104,7 +109,7 @@ public class EventService : IEventService
 
         ev.Name          = dto.Name;
         ev.Description   = dto.Description;
-        ev.EventDate     = dto.EventDate;
+        ev.EventDate     = DateTime.SpecifyKind(dto.EventDate.Date, DateTimeKind.Utc);
         ev.IsActive      = dto.IsActive;
         ev.PresentPoints = dto.PresentPoints;
         ev.LatePoints    = dto.LatePoints;

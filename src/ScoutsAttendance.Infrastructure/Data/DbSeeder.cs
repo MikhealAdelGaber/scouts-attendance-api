@@ -34,8 +34,10 @@ public static class DbSeeder
             }
             catch (Exception ex) when (IsUndefinedTableError(ex))
             {
-                // The Users table does not exist at all — safe to wipe + recreate.
-                await context.Database.EnsureDeletedAsync();
+                // The Users table does not exist at all — create missing tables only.
+                // NEVER call EnsureDeletedAsync here: that would wipe all production data.
+                // EnsureCreated is safe: it creates tables that are missing and leaves
+                // existing tables (with their data) completely untouched.
                 await context.Database.EnsureCreatedAsync();
             }
             catch
@@ -318,29 +320,26 @@ public static class DbSeeder
     }
 
     /// <summary>
-    /// Returns true only when the exception indicates that a relation (table)
-    /// does not exist in PostgreSQL — error code 42P01.  This is the only case
-    /// where wiping and recreating the schema is safe.  Any other exception
-    /// (transient connection error, timeout, permission issue) must NOT trigger
-    /// a wipe, or we risk destroying production data on every Railway restart.
+    /// Returns true ONLY when the exception indicates that a table (relation)
+    /// does not exist in PostgreSQL — error code 42P01 "undefined_table".
+    ///
+    /// IMPORTANT: Do NOT match on the generic "does not exist" message string.
+    /// PostgreSQL uses that phrase for missing columns, functions, types, etc.
+    /// Matching it broadly caused EnsureDeletedAsync to fire on column-not-found
+    /// errors and wipe all production data.  Use SqlState exclusively.
     /// </summary>
     private static bool IsUndefinedTableError(Exception ex)
     {
-        // Walk the exception chain looking for the PostgreSQL error code 42P01.
-        // We intentionally avoid a direct reference to Npgsql here so that this
-        // helper also compiles in environments where Npgsql is not loaded.
         for (var e = ex; e is not null; e = e.InnerException)
         {
-            var msg = e.Message;
-            var type = e.GetType().Name;
-
-            if (type == "PostgresException" &&
-                (msg.Contains("42P01") || msg.Contains("does not exist")))
-                return true;
-
-            // Npgsql also exposes SqlState as a property — check via reflection
+            // Primary check: SqlState property exposed by NpgsqlException
             var sqlState = e.GetType().GetProperty("SqlState")?.GetValue(e) as string;
             if (sqlState == "42P01") return true;
+
+            // Fallback: error code embedded in the message (e.g. "42P01: relation ... does not exist")
+            // Only match when the 5-char SQLSTATE code itself appears in the message.
+            if (e.GetType().Name == "PostgresException" && e.Message.Contains("42P01"))
+                return true;
         }
         return false;
     }

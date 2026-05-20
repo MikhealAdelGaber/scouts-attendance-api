@@ -21,10 +21,11 @@ public class ExcusesController : ControllerBase
         return Ok(ApiResponse<IEnumerable<MemberExcuseDto>>.Ok(result));
     }
 
-    [HttpGet("active")]
-    public async Task<ActionResult<ApiResponse<IEnumerable<MemberExcuseDto>>>> GetAllActive([FromQuery] Guid? troopId)
+    [HttpGet("active")]   // keep old route so existing clients don't break
+    [HttpGet]             // also expose as GET /api/excuses
+    public async Task<ActionResult<ApiResponse<IEnumerable<MemberExcuseDto>>>> GetAll([FromQuery] Guid? troopId)
     {
-        var result = await _service.GetAllActiveAsync(troopId);
+        var result = await _service.GetAllAsync(troopId);
         return Ok(ApiResponse<IEnumerable<MemberExcuseDto>>.Ok(result));
     }
 

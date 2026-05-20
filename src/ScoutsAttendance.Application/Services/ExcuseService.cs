@@ -8,7 +8,7 @@ namespace ScoutsAttendance.Application.Services;
 public interface IExcuseService
 {
     Task<IEnumerable<MemberExcuseDto>> GetByMemberAsync(Guid memberId);
-    Task<IEnumerable<MemberExcuseDto>> GetAllActiveAsync(Guid? troopId = null);
+    Task<IEnumerable<MemberExcuseDto>> GetAllAsync(Guid? troopId = null);
     Task<MemberExcuseDto>  GrantAsync(GrantExcuseDto dto);
     Task<MemberExcuseDto?> UpdateAsync(Guid id, UpdateExcuseDto dto);
     Task<bool>             RevokeAsync(Guid id);
@@ -37,19 +37,15 @@ public class ExcuseService : IExcuseService
         return excuses.Select(e => MapToDto(e, usernames));
     }
 
-    public async Task<IEnumerable<MemberExcuseDto>> GetAllActiveAsync(Guid? troopId = null)
+    public async Task<IEnumerable<MemberExcuseDto>> GetAllAsync(Guid? troopId = null)
     {
-        // "Active" means the excuse has NOT been manually revoked (IsActive = true).
-        // We intentionally do NOT filter by date range here — that filter belongs only
-        // in the event-coverage check (Member.HasActiveExcuse(eventDate)).
-        //
-        // Filtering by today's date in the list caused two bugs:
-        //   1. An excuse for a specific past date disappears the next day.
-        //   2. An excuse created for a future event never appears in the list.
-        // Users need to see all non-revoked excuses regardless of date.
+        // Returns ALL excuses — active (IsActive=true) AND revoked (IsActive=false).
+        // Date-range filtering is intentionally omitted here; it belongs only in
+        // Member.HasActiveExcuse(eventDate) for attendance-coverage checks.
+        // The frontend shows status badges: Active Now / Upcoming / Past / Revoked.
         var query = _uow.MemberExcuses.Query()
             .Include(e => e.Member).ThenInclude(m => m.Troop)
-            .Where(e => !e.IsDeleted && e.IsActive);
+            .Where(e => !e.IsDeleted);   // only hard-deleted rows are excluded
 
         if (troopId.HasValue)
             query = query.Where(e => e.Member != null && e.Member.TroopId == troopId.Value);

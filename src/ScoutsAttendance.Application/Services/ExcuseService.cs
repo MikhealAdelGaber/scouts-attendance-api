@@ -39,22 +39,30 @@ public class ExcuseService : IExcuseService
 
     public async Task<IEnumerable<MemberExcuseDto>> GetAllActiveAsync(Guid? troopId = null)
     {
-        // Compare against today's UTC date only (midnight) so that excuses stored
-        // as UTC midnight are not excluded by a same-day check at e.g. 23:59 UTC.
-        var today = DateTime.SpecifyKind(DateTime.UtcNow.Date, DateTimeKind.Utc);
+        // "Active" means the excuse has NOT been manually revoked (IsActive = true).
+        // We intentionally do NOT filter by date range here — that filter belongs only
+        // in the event-coverage check (Member.HasActiveExcuse(eventDate)).
+        //
+        // Filtering by today's date in the list caused two bugs:
+        //   1. An excuse for a specific past date disappears the next day.
+        //   2. An excuse created for a future event never appears in the list.
+        // Users need to see all non-revoked excuses regardless of date.
         var query = _uow.MemberExcuses.Query()
             .Include(e => e.Member).ThenInclude(m => m.Troop)
-            .Where(e => !e.IsDeleted && e.IsActive &&
-                        e.StartDate <= today && (e.EndDate == null || e.EndDate >= today));
+            .Where(e => !e.IsDeleted && e.IsActive);
 
         if (troopId.HasValue)
-            query = query.Where(e => e.Member.TroopId == troopId.Value);
+            query = query.Where(e => e.Member != null && e.Member.TroopId == troopId.Value);
         else if (_currentUser.HasTroopScope)
-            query = query.Where(e => e.Member.TroopId == _currentUser.TroopId!.Value);
+            query = query.Where(e => e.Member != null && e.Member.TroopId == _currentUser.TroopId!.Value);
         else if (!_currentUser.IsSystemAdmin && _currentUser.GroupId.HasValue)
-            query = query.Where(e => e.Member.GroupId == _currentUser.GroupId.Value);
+            query = query.Where(e => e.Member != null && e.Member.GroupId == _currentUser.GroupId.Value);
 
-        var list = await query.OrderBy(e => e.Member.LastName).ToListAsync();
+        var list = await query
+            .OrderByDescending(e => e.StartDate)
+            .ThenBy(e => e.Member != null ? e.Member.LastName : string.Empty)
+            .ToListAsync();
+
         var usernames = await GetUsernamesAsync(list.Select(e => e.GrantedBy));
         return list.Select(e => MapToDto(e, usernames));
     }

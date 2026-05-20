@@ -174,7 +174,40 @@ public static class DbSeeder
             }
             catch { /* safe */ }
 
-            // ── 3o–3r. Events table point configuration columns ───────────────────
+            // ── 3o. MemberExcuses table — create if it was added to the model AFTER
+            //        the Railway DB was first created by EnsureCreated.
+            //        EnsureCreated is idempotent for the whole DB but does NOT add
+            //        individual tables that didn't exist at first-run time.
+            try
+            {
+                // EF Core always supplies the Guid PK value client-side before INSERT,
+                // so no DB-level DEFAULT is needed for "Id".  Avoiding gen_random_uuid()
+                // keeps this compatible with PostgreSQL 12 and any Railway instance that
+                // hasn't loaded the pgcrypto extension.
+                await context.Database.ExecuteSqlRawAsync(@"
+                    CREATE TABLE IF NOT EXISTS ""MemberExcuses"" (
+                        ""Id""        UUID                     NOT NULL,
+                        ""MemberId""  UUID                     NOT NULL,
+                        ""StartDate"" TIMESTAMP WITH TIME ZONE NOT NULL,
+                        ""EndDate""   TIMESTAMP WITH TIME ZONE,
+                        ""Reason""    TEXT,
+                        ""IsActive""  BOOLEAN                  NOT NULL DEFAULT TRUE,
+                        ""GrantedBy"" UUID                     NOT NULL,
+                        ""CreatedAt"" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+                        ""UpdatedAt"" TIMESTAMP WITH TIME ZONE,
+                        ""IsDeleted"" BOOLEAN                  NOT NULL DEFAULT FALSE,
+                        CONSTRAINT ""PK_MemberExcuses"" PRIMARY KEY (""Id""),
+                        CONSTRAINT ""FK_MemberExcuses_Members_MemberId""
+                            FOREIGN KEY (""MemberId"") REFERENCES ""Members""(""Id"") ON DELETE CASCADE
+                    )");
+            }
+            catch { /* safe — table already exists (IF NOT EXISTS handles idempotency) */ }
+
+            // Indexes for MemberExcuses (idempotent)
+            try { await context.Database.ExecuteSqlRawAsync(@"CREATE INDEX IF NOT EXISTS ""IX_MemberExcuses_MemberId"" ON ""MemberExcuses"" (""MemberId"")"); } catch { }
+            try { await context.Database.ExecuteSqlRawAsync(@"CREATE INDEX IF NOT EXISTS ""IX_MemberExcuses_MemberId_IsActive"" ON ""MemberExcuses"" (""MemberId"", ""IsActive"")"); } catch { }
+
+            // ── 3q–3t. Events table point configuration columns ───────────────────
             // AddEventPointsConfig migration: rename PointValue→PresentPoints and
             // LatePointValue→LatePoints, then add ExcusedPoints and AbsentPoints.
             //

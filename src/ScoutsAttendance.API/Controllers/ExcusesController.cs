@@ -31,8 +31,25 @@ public class ExcusesController : ControllerBase
     [HttpPost]
     public async Task<ActionResult<ApiResponse<MemberExcuseDto>>> Grant([FromBody] GrantExcuseDto dto)
     {
-        var result = await _service.GrantAsync(dto);
-        return Ok(ApiResponse<MemberExcuseDto>.Ok(result, "Excuse granted"));
+        try
+        {
+            var result = await _service.GrantAsync(dto);
+            return Ok(ApiResponse<MemberExcuseDto>.Ok(result, "Excuse granted"));
+        }
+        catch (KeyNotFoundException ex)
+        {
+            return NotFound(ApiResponse.Fail(ex.Message));
+        }
+        catch (Exception ex)
+        {
+            // Surface the real database / service error so the client can report it.
+            // Use the innermost exception message which typically contains the
+            // PostgreSQL error detail (e.g. "relation MemberExcuses does not exist").
+            var inner = ex;
+            while (inner.InnerException != null) inner = inner.InnerException;
+            var detail = inner.Message.Length > 300 ? inner.Message[..300] : inner.Message;
+            return StatusCode(500, ApiResponse.Fail($"Failed to save excuse: {detail}"));
+        }
     }
 
     [HttpPut("{id:guid}")]

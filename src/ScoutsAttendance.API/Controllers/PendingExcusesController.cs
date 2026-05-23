@@ -35,15 +35,35 @@ public class PendingExcusesController : ControllerBase
         return Ok(ApiResponse<int>.Ok(count));
     }
 
-    /// <summary>Approves or rejects a pending excuse submission.</summary>
-    [HttpPost("{id:guid}/review")]
-    public async Task<ActionResult<ApiResponse<PendingExcuseDto>>> Review(
+    /// <summary>Approves a pending excuse, creating the real MemberExcuse record.</summary>
+    [HttpPost("{id:guid}/approve")]
+    public async Task<ActionResult<ApiResponse<PendingExcuseDto>>> Approve(
         Guid id,
-        [FromBody] ReviewPendingExcuseDto dto)
+        [FromBody] ReviewNotesDto dto)
     {
         try
         {
-            var result = await _service.ReviewAsync(id, dto);
+            var result = await _service.ApproveAsync(id, dto.ReviewNotes);
+            if (result is null)
+                return NotFound(ApiResponse<PendingExcuseDto>.Fail("Pending excuse not found."));
+
+            return Ok(ApiResponse<PendingExcuseDto>.Ok(result));
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(ApiResponse<PendingExcuseDto>.Fail(ex.Message));
+        }
+    }
+
+    /// <summary>Rejects a pending excuse submission.</summary>
+    [HttpPost("{id:guid}/reject")]
+    public async Task<ActionResult<ApiResponse<PendingExcuseDto>>> Reject(
+        Guid id,
+        [FromBody] ReviewNotesDto dto)
+    {
+        try
+        {
+            var result = await _service.RejectAsync(id, dto.ReviewNotes);
             if (result is null)
                 return NotFound(ApiResponse<PendingExcuseDto>.Fail("Pending excuse not found."));
 

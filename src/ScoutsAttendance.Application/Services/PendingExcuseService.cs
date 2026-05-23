@@ -1,5 +1,4 @@
 using Microsoft.EntityFrameworkCore;
-using ScoutsAttendance.Application.DTOs.Excuses;
 using ScoutsAttendance.Application.DTOs.PendingExcuses;
 using ScoutsAttendance.Application.Interfaces;
 using ScoutsAttendance.Domain.Entities;
@@ -9,14 +8,15 @@ namespace ScoutsAttendance.Application.Services;
 
 public interface IPendingExcuseService
 {
-    // ── Public (no auth) ───────────────────────────────────────────────────
+    // ── Public (no auth) ────────────────────────────────────────────────────
     Task<PublicTroopInfoDto?> GetTroopByTokenAsync(string token);
     Task<PendingExcuseDto>    SubmitAsync(string token, SubmitPendingExcuseDto dto, string submitterIp);
 
-    // ── Admin / GroupLeader ────────────────────────────────────────────────
+    // ── Admin / GroupLeader ─────────────────────────────────────────────────
     Task<IEnumerable<PendingExcuseDto>> GetPendingAsync(Guid? troopId = null);
     Task<int>             GetPendingCountAsync(Guid? groupId = null);
-    Task<PendingExcuseDto?> ReviewAsync(Guid id, ReviewPendingExcuseDto dto);
+    Task<PendingExcuseDto?> ApproveAsync(Guid id, string? reviewNotes);
+    Task<PendingExcuseDto?> RejectAsync(Guid id, string? reviewNotes);
 }
 
 public class PendingExcuseService : IPendingExcuseService
@@ -30,7 +30,7 @@ public class PendingExcuseService : IPendingExcuseService
         _currentUser = currentUser;
     }
 
-    // ─── Public ──────────────────────────────────────────────────────────────
+    // ─── Public endpoints ────────────────────────────────────────────────────
 
     public async Task<PublicTroopInfoDto?> GetTroopByTokenAsync(string token)
     {
@@ -41,30 +41,49 @@ public class PendingExcuseService : IPendingExcuseService
 
         if (troop is null) return null;
 
+        // Load active members for this troop (name + scout ID for the dropdown)
+        var members = await _uow.Members.Query()
+            .Where(m => m.TroopId == troop.Id && !m.IsDeleted)
+            .OrderBy(m => m.FirstName).ThenBy(m => m.LastName)
+            .Select(m => new PublicMemberDto
+            {
+                Id       = m.Id,
+                FullName = m.FirstName + " " + m.LastName,
+                CustomId = m.CustomId
+            })
+            .ToListAsync();
+
         return new PublicTroopInfoDto
         {
             Id        = troop.Id,
             Name      = troop.Name,
-            GroupName = troop.Group?.Name ?? string.Empty
+            GroupName = troop.Group?.Name ?? string.Empty,
+            Members   = members
         };
     }
 
     public async Task<PendingExcuseDto> SubmitAsync(string token, SubmitPendingExcuseDto dto, string submitterIp)
     {
+        // Validate token
         var troop = await _uow.Troops.Query()
             .IgnoreQueryFilters()
             .FirstOrDefaultAsync(t => t.ShareToken == token && !t.IsDeleted)
             ?? throw new KeyNotFoundException("Invalid or expired excuse link.");
 
+        // Validate dates
         if (dto.EndDate < dto.StartDate)
             throw new ArgumentException("End date must be on or after start date.");
+
+        // Validate that the chosen member actually belongs to this troop
+        var member = await _uow.Members.FindSingleAsync(
+            m => m.Id == dto.MemberId && m.TroopId == troop.Id && !m.IsDeleted)
+            ?? throw new ArgumentException("Selected member does not belong to this troop.");
 
         var pending = new PendingExcuse
         {
             TroopId        = troop.Id,
-            SubmitterName  = dto.SubmitterName.Trim(),
-            MemberName     = dto.MemberName.Trim(),
-            MemberCustomId = dto.MemberCustomId,
+            MemberId       = member.Id,
+            SubmittedByName = dto.SubmittedByName.Trim(),
             StartDate      = DateTime.SpecifyKind(dto.StartDate.Date, DateTimeKind.Utc),
             EndDate        = DateTime.SpecifyKind(dto.EndDate.Date, DateTimeKind.Utc),
             Reason         = dto.Reason.Trim(),
@@ -75,18 +94,19 @@ public class PendingExcuseService : IPendingExcuseService
         await _uow.PendingExcuses.AddAsync(pending);
         await _uow.SaveChangesAsync();
 
-        return MapToDto(pending, troop.Name);
+        return MapToDto(pending, troop.Name, member.FullName, member.CustomId);
     }
 
-    // ─── Admin / Leader ──────────────────────────────────────────────────────
+    // ─── Admin / Leader endpoints ────────────────────────────────────────────
 
     public async Task<IEnumerable<PendingExcuseDto>> GetPendingAsync(Guid? troopId = null)
     {
         var query = _uow.PendingExcuses.Query()
             .Include(p => p.Troop)
+            .Include(p => p.Member)
             .Where(p => !p.IsDeleted && p.Status == PendingExcuseStatus.Pending);
 
-        // Scope by group for non-SystemAdmin
+        // Scope to this user's group unless SystemAdmin
         if (!_currentUser.IsSystemAdmin && _currentUser.GroupId.HasValue)
         {
             var groupId = _currentUser.GroupId.Value;
@@ -97,7 +117,11 @@ public class PendingExcuseService : IPendingExcuseService
             query = query.Where(p => p.TroopId == troopId.Value);
 
         var list = await query.OrderByDescending(p => p.CreatedAt).ToListAsync();
-        return list.Select(p => MapToDto(p, p.Troop?.Name ?? string.Empty));
+        return list.Select(p => MapToDto(
+            p,
+            p.Troop?.Name   ?? string.Empty,
+            p.Member?.FullName ?? string.Empty,
+            p.Member?.CustomId ?? 0));
     }
 
     public async Task<int> GetPendingCountAsync(Guid? groupId = null)
@@ -112,10 +136,11 @@ public class PendingExcuseService : IPendingExcuseService
         return await query.CountAsync();
     }
 
-    public async Task<PendingExcuseDto?> ReviewAsync(Guid id, ReviewPendingExcuseDto dto)
+    public async Task<PendingExcuseDto?> ApproveAsync(Guid id, string? reviewNotes)
     {
         var pending = await _uow.PendingExcuses.Query()
             .Include(p => p.Troop)
+            .Include(p => p.Member)
             .FirstOrDefaultAsync(p => p.Id == id && !p.IsDeleted);
 
         if (pending is null) return null;
@@ -123,68 +148,86 @@ public class PendingExcuseService : IPendingExcuseService
         if (pending.Status != PendingExcuseStatus.Pending)
             throw new InvalidOperationException("This excuse has already been reviewed.");
 
-        pending.Status      = dto.Approve ? PendingExcuseStatus.Approved : PendingExcuseStatus.Rejected;
-        pending.ReviewNotes = dto.ReviewNotes;
-        pending.ReviewedBy  = _currentUser.UserId;
-        pending.ReviewedAt  = DateTime.UtcNow;
-        pending.UpdatedAt   = DateTime.UtcNow;
-
-        // When approving, create the actual MemberExcuse record
-        if (dto.Approve)
+        // Create the real MemberExcuse record in the main system
+        var excuse = new MemberExcuse
         {
-            // Resolve the member: prefer explicit MemberId, otherwise try matching by CustomId
-            Guid? memberId = dto.MemberId;
+            MemberId  = pending.MemberId,
+            StartDate = pending.StartDate,
+            EndDate   = pending.EndDate,
+            Reason    = $"[Approved] {pending.Reason}",
+            IsActive  = true,
+            GrantedBy = _currentUser.UserId
+        };
+        await _uow.MemberExcuses.AddAsync(excuse);
+        await _uow.SaveChangesAsync();
 
-            if (!memberId.HasValue && pending.MemberCustomId.HasValue)
-            {
-                var member = await _uow.Members.FindSingleAsync(
-                    m => m.CustomId == pending.MemberCustomId.Value
-                      && m.TroopId == pending.TroopId
-                      && !m.IsDeleted);
-                memberId = member?.Id;
-            }
-
-            if (memberId.HasValue)
-            {
-                var excuse = new MemberExcuse
-                {
-                    MemberId  = memberId.Value,
-                    StartDate = pending.StartDate,
-                    EndDate   = pending.EndDate,
-                    Reason    = $"[Via Submission] {pending.Reason}",
-                    IsActive  = true,
-                    GrantedBy = _currentUser.UserId
-                };
-                await _uow.MemberExcuses.AddAsync(excuse);
-                await _uow.SaveChangesAsync();
-                pending.ResultingExcuseId = excuse.Id;
-            }
-        }
+        // Mark the pending excuse as Approved and link the resulting excuse
+        pending.Status            = PendingExcuseStatus.Approved;
+        pending.ReviewNotes       = reviewNotes;
+        pending.ReviewedBy        = _currentUser.UserId;
+        pending.ReviewedAt        = DateTime.UtcNow;
+        pending.UpdatedAt         = DateTime.UtcNow;
+        pending.ResultingExcuseId = excuse.Id;
 
         _uow.PendingExcuses.Update(pending);
         await _uow.SaveChangesAsync();
 
-        return MapToDto(pending, pending.Troop?.Name ?? string.Empty);
+        return MapToDto(pending,
+            pending.Troop?.Name    ?? string.Empty,
+            pending.Member?.FullName ?? string.Empty,
+            pending.Member?.CustomId ?? 0);
+    }
+
+    public async Task<PendingExcuseDto?> RejectAsync(Guid id, string? reviewNotes)
+    {
+        var pending = await _uow.PendingExcuses.Query()
+            .Include(p => p.Troop)
+            .Include(p => p.Member)
+            .FirstOrDefaultAsync(p => p.Id == id && !p.IsDeleted);
+
+        if (pending is null) return null;
+
+        if (pending.Status != PendingExcuseStatus.Pending)
+            throw new InvalidOperationException("This excuse has already been reviewed.");
+
+        pending.Status      = PendingExcuseStatus.Rejected;
+        pending.ReviewNotes = reviewNotes;
+        pending.ReviewedBy  = _currentUser.UserId;
+        pending.ReviewedAt  = DateTime.UtcNow;
+        pending.UpdatedAt   = DateTime.UtcNow;
+
+        _uow.PendingExcuses.Update(pending);
+        await _uow.SaveChangesAsync();
+
+        return MapToDto(pending,
+            pending.Troop?.Name    ?? string.Empty,
+            pending.Member?.FullName ?? string.Empty,
+            pending.Member?.CustomId ?? 0);
     }
 
     // ─── Mapper ──────────────────────────────────────────────────────────────
 
-    private static PendingExcuseDto MapToDto(PendingExcuse p, string troopName) => new()
+    private static PendingExcuseDto MapToDto(
+        PendingExcuse p,
+        string troopName,
+        string memberName,
+        int memberCustomId) => new()
     {
-        Id               = p.Id,
-        TroopId          = p.TroopId,
-        TroopName        = troopName,
-        SubmitterName    = p.SubmitterName,
-        MemberName       = p.MemberName,
-        MemberCustomId   = p.MemberCustomId,
-        StartDate        = p.StartDate,
-        EndDate          = p.EndDate,
-        Reason           = p.Reason,
-        Status           = p.Status,
-        StatusName       = p.Status.ToString(),
-        ReviewNotes      = p.ReviewNotes,
-        ReviewedAt       = p.ReviewedAt,
+        Id                = p.Id,
+        TroopId           = p.TroopId,
+        TroopName         = troopName,
+        MemberId          = p.MemberId,
+        MemberName        = memberName,
+        MemberCustomId    = memberCustomId,
+        SubmittedByName   = p.SubmittedByName,
+        StartDate         = p.StartDate,
+        EndDate           = p.EndDate,
+        Reason            = p.Reason,
+        Status            = p.Status,
+        StatusName        = p.Status.ToString(),
+        ReviewNotes       = p.ReviewNotes,
+        ReviewedAt        = p.ReviewedAt,
         ResultingExcuseId = p.ResultingExcuseId,
-        CreatedAt        = p.CreatedAt
+        CreatedAt         = p.CreatedAt
     };
 }

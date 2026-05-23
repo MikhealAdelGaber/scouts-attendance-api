@@ -229,11 +229,16 @@ public class ApplicationDbContext : DbContext
         mb.Entity<PendingExcuse>(e =>
         {
             e.HasIndex(p => p.TroopId);
+            e.HasIndex(p => p.MemberId);
             e.HasIndex(p => p.Status);
             e.Property(p => p.Status).HasConversion<int>();
             e.HasOne(p => p.Troop)
                 .WithMany()
                 .HasForeignKey(p => p.TroopId)
+                .OnDelete(DeleteBehavior.Restrict);
+            e.HasOne(p => p.Member)
+                .WithMany()
+                .HasForeignKey(p => p.MemberId)
                 .OnDelete(DeleteBehavior.Restrict);
         });
 

@@ -243,27 +243,27 @@ public static class DbSeeder
             catch { /* safe */ }
 
             // ── PendingExcuses table ──────────────────────────────────────────────
+            // Schema: MemberId (FK) + SubmittedByName instead of the old free-text fields.
             try
             {
                 await context.Database.ExecuteSqlRawAsync(@"
                     CREATE TABLE IF NOT EXISTS ""PendingExcuses"" (
-                        ""Id""               UUID                     NOT NULL,
-                        ""TroopId""          UUID                     NOT NULL,
-                        ""SubmitterName""    TEXT                     NOT NULL DEFAULT '',
-                        ""MemberName""       TEXT                     NOT NULL DEFAULT '',
-                        ""MemberCustomId""   INTEGER,
-                        ""StartDate""        TIMESTAMP WITH TIME ZONE NOT NULL,
-                        ""EndDate""          TIMESTAMP WITH TIME ZONE NOT NULL,
-                        ""Reason""           TEXT                     NOT NULL DEFAULT '',
-                        ""SubmitterIp""      TEXT                     NOT NULL DEFAULT '',
-                        ""Status""           INTEGER                  NOT NULL DEFAULT 0,
-                        ""ReviewNotes""      TEXT,
-                        ""ReviewedBy""       UUID,
-                        ""ReviewedAt""       TIMESTAMP WITH TIME ZONE,
+                        ""Id""                UUID                     NOT NULL,
+                        ""TroopId""           UUID                     NOT NULL,
+                        ""MemberId""          UUID                     NOT NULL DEFAULT '00000000-0000-0000-0000-000000000000',
+                        ""SubmittedByName""   TEXT                     NOT NULL DEFAULT '',
+                        ""StartDate""         TIMESTAMP WITH TIME ZONE NOT NULL,
+                        ""EndDate""           TIMESTAMP WITH TIME ZONE NOT NULL,
+                        ""Reason""            TEXT                     NOT NULL DEFAULT '',
+                        ""SubmitterIp""       TEXT                     NOT NULL DEFAULT '',
+                        ""Status""            INTEGER                  NOT NULL DEFAULT 0,
+                        ""ReviewNotes""       TEXT,
+                        ""ReviewedBy""        UUID,
+                        ""ReviewedAt""        TIMESTAMP WITH TIME ZONE,
                         ""ResultingExcuseId"" UUID,
-                        ""CreatedAt""        TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
-                        ""UpdatedAt""        TIMESTAMP WITH TIME ZONE,
-                        ""IsDeleted""        BOOLEAN                  NOT NULL DEFAULT FALSE,
+                        ""CreatedAt""         TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+                        ""UpdatedAt""         TIMESTAMP WITH TIME ZONE,
+                        ""IsDeleted""         BOOLEAN                  NOT NULL DEFAULT FALSE,
                         CONSTRAINT ""PK_PendingExcuses"" PRIMARY KEY (""Id""),
                         CONSTRAINT ""FK_PendingExcuses_Troops_TroopId""
                             FOREIGN KEY (""TroopId"") REFERENCES ""Troops""(""Id"") ON DELETE RESTRICT
@@ -271,8 +271,39 @@ public static class DbSeeder
             }
             catch { /* safe — IF NOT EXISTS handles idempotency */ }
 
-            try { await context.Database.ExecuteSqlRawAsync(@"CREATE INDEX IF NOT EXISTS ""IX_PendingExcuses_TroopId"" ON ""PendingExcuses"" (""TroopId"")"); } catch { }
-            try { await context.Database.ExecuteSqlRawAsync(@"CREATE INDEX IF NOT EXISTS ""IX_PendingExcuses_Status"" ON ""PendingExcuses"" (""Status"")"); } catch { }
+            // Migrate existing PendingExcuses tables that used the old schema (pre-MemberId)
+            try
+            {
+                await context.Database.ExecuteSqlRawAsync(
+                    @"ALTER TABLE ""PendingExcuses"" ADD COLUMN IF NOT EXISTS ""MemberId"" UUID NOT NULL DEFAULT '00000000-0000-0000-0000-000000000000'");
+            }
+            catch { /* safe */ }
+            try
+            {
+                await context.Database.ExecuteSqlRawAsync(
+                    @"ALTER TABLE ""PendingExcuses"" ADD COLUMN IF NOT EXISTS ""SubmittedByName"" TEXT NOT NULL DEFAULT ''");
+            }
+            catch { /* safe */ }
+
+            // Add FK constraint for MemberId (drop first for idempotency, then re-add)
+            try
+            {
+                await context.Database.ExecuteSqlRawAsync(
+                    @"ALTER TABLE ""PendingExcuses"" DROP CONSTRAINT IF EXISTS ""FK_PendingExcuses_Members_MemberId""");
+            }
+            catch { /* safe */ }
+            try
+            {
+                await context.Database.ExecuteSqlRawAsync(@"
+                    ALTER TABLE ""PendingExcuses""
+                        ADD CONSTRAINT ""FK_PendingExcuses_Members_MemberId""
+                        FOREIGN KEY (""MemberId"") REFERENCES ""Members""(""Id"") ON DELETE RESTRICT");
+            }
+            catch { /* safe — may fail if there are orphan rows from old schema; non-critical */ }
+
+            try { await context.Database.ExecuteSqlRawAsync(@"CREATE INDEX IF NOT EXISTS ""IX_PendingExcuses_TroopId""   ON ""PendingExcuses"" (""TroopId"")"); } catch { }
+            try { await context.Database.ExecuteSqlRawAsync(@"CREATE INDEX IF NOT EXISTS ""IX_PendingExcuses_MemberId""  ON ""PendingExcuses"" (""MemberId"")"); } catch { }
+            try { await context.Database.ExecuteSqlRawAsync(@"CREATE INDEX IF NOT EXISTS ""IX_PendingExcuses_Status""    ON ""PendingExcuses"" (""Status"")"); } catch { }
 
             // ── 3q–3t. Events table point configuration columns ───────────────────
             // AddEventPointsConfig migration: rename PointValue→PresentPoints and

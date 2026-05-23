@@ -3,69 +3,70 @@ using ScoutsAttendance.Domain.Enums;
 
 namespace ScoutsAttendance.Application.DTOs.PendingExcuses;
 
-// ── Public read-only troop info (returned to anonymous submitters) ──────────
+// ── Member info exposed publicly (no PII beyond name + scout ID) ─────────────
+public class PublicMemberDto
+{
+    public Guid   Id       { get; set; }
+    public string FullName { get; set; } = string.Empty;
+    public int    CustomId { get; set; }
+}
+
+// ── Public troop info returned to anonymous submitters ───────────────────────
 public class PublicTroopInfoDto
 {
     public Guid   Id        { get; set; }
     public string Name      { get; set; } = string.Empty;
     public string GroupName { get; set; } = string.Empty;
+
+    /// <summary>All active members of this troop, for the searchable dropdown.</summary>
+    public IEnumerable<PublicMemberDto> Members { get; set; } = Enumerable.Empty<PublicMemberDto>();
 }
 
-// ── Submission payload sent by an anonymous user ────────────────────────────
+// ── Submission payload sent by an anonymous user ─────────────────────────────
 public class SubmitPendingExcuseDto
 {
+    /// <summary>Name of the person submitting (parent / guardian / scout).</summary>
     [Required, MaxLength(200)]
-    public string SubmitterName { get; set; } = string.Empty;
+    public string SubmittedByName { get; set; } = string.Empty;
 
-    [Required, MaxLength(200)]
-    public string MemberName    { get; set; } = string.Empty;
-
-    public int? MemberCustomId { get; set; }
+    /// <summary>The member this excuse is for — must belong to this troop.</summary>
+    [Required]
+    public Guid MemberId { get; set; }
 
     [Required]
-    public DateTime StartDate   { get; set; }
+    public DateTime StartDate { get; set; }
 
     [Required]
-    public DateTime EndDate     { get; set; }
+    public DateTime EndDate { get; set; }
 
     [Required, MaxLength(1000)]
-    public string Reason        { get; set; } = string.Empty;
+    public string Reason { get; set; } = string.Empty;
 }
 
-// ── Full DTO returned to admins/leaders ────────────────────────────────────
+// ── Full DTO returned to admins / leaders ────────────────────────────────────
 public class PendingExcuseDto
 {
-    public Guid               Id              { get; set; }
-    public Guid               TroopId         { get; set; }
-    public string             TroopName       { get; set; } = string.Empty;
-    public string             SubmitterName   { get; set; } = string.Empty;
-    public string             MemberName      { get; set; } = string.Empty;
-    public int?               MemberCustomId  { get; set; }
-    public DateTime           StartDate       { get; set; }
-    public DateTime           EndDate         { get; set; }
-    public string             Reason          { get; set; } = string.Empty;
-    public PendingExcuseStatus Status         { get; set; }
-    public string             StatusName      { get; set; } = string.Empty;
-    public string?            ReviewNotes     { get; set; }
-    public DateTime?          ReviewedAt      { get; set; }
+    public Guid               Id               { get; set; }
+    public Guid               TroopId          { get; set; }
+    public string             TroopName        { get; set; } = string.Empty;
+    public Guid               MemberId         { get; set; }
+    public string             MemberName       { get; set; } = string.Empty;
+    public int                MemberCustomId   { get; set; }
+    public string             SubmittedByName  { get; set; } = string.Empty;
+    public DateTime           StartDate        { get; set; }
+    public DateTime           EndDate          { get; set; }
+    public string             Reason           { get; set; } = string.Empty;
+    public PendingExcuseStatus Status          { get; set; }
+    public string             StatusName       { get; set; } = string.Empty;
+    public string?            ReviewNotes      { get; set; }
+    public DateTime?          ReviewedAt       { get; set; }
     public Guid?              ResultingExcuseId { get; set; }
-    public DateTime           CreatedAt       { get; set; }
+    public DateTime           CreatedAt        { get; set; }
 }
 
-// ── Review payload (approve or reject) ─────────────────────────────────────
-public class ReviewPendingExcuseDto
+// ── Review notes payload (used by approve and reject endpoints) ───────────────
+public class ReviewNotesDto
 {
-    /// <summary>true = approve; false = reject</summary>
-    [Required]
-    public bool    Approve     { get; set; }
-
     [MaxLength(500)]
     public string? ReviewNotes { get; set; }
-
-    /// <summary>
-    /// Only relevant when Approve = true.
-    /// If provided, links the resulting MemberExcuse to this member;
-    /// otherwise the excuse is created using the submitted MemberName and MemberCustomId.
-    /// </summary>
-    public Guid? MemberId { get; set; }
 }

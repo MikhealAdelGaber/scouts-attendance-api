@@ -1,5 +1,7 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using ScoutsAttendance.Application.Common;
+using ScoutsAttendance.Application.DTOs.Reports;
 using ScoutsAttendance.Application.Services;
 
 namespace ScoutsAttendance.API.Controllers;
@@ -37,7 +39,7 @@ public class ExportController : ControllerBase
 
     // ─── Excel ─────────────────────────────────────────────────────────────────
 
-    /// <summary>Export members list as Excel.</summary>
+    /// <summary>Export members list as Excel (basic columns).</summary>
     [HttpGet("members/excel")]
     public async Task<IActionResult> MembersExcel([FromQuery] Guid? troopId)
     {
@@ -45,6 +47,40 @@ public class ExportController : ControllerBase
         return File(bytes,
             "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             $"members_{Stamp()}.xlsx");
+    }
+
+    /// <summary>Export members list as Excel — full data including CustomId, Gender, Notes and TotalPoints.</summary>
+    [HttpGet("members/excel/full")]
+    public async Task<IActionResult> MembersExcelFull([FromQuery] Guid? troopId)
+    {
+        var bytes = await _excel.ExportMembersFullAsync(troopId);
+        return File(bytes,
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            $"members_full_{Stamp()}.xlsx");
+    }
+
+    /// <summary>JSON preview — per-member attendance rate for a date range.</summary>
+    [HttpGet("attendance-rate")]
+    public async Task<ActionResult<ApiResponse<IEnumerable<AttendanceRateDto>>>> AttendanceRate(
+        [FromQuery] Guid?     troopId,
+        [FromQuery] DateTime? from,
+        [FromQuery] DateTime? to)
+    {
+        var result = await _excel.GetAttendanceRateAsync(troopId, from, to);
+        return Ok(ApiResponse<IEnumerable<AttendanceRateDto>>.Ok(result));
+    }
+
+    /// <summary>Export per-member attendance rate as Excel.</summary>
+    [HttpGet("attendance-rate/excel")]
+    public async Task<IActionResult> AttendanceRateExcel(
+        [FromQuery] Guid?     troopId,
+        [FromQuery] DateTime? from,
+        [FromQuery] DateTime? to)
+    {
+        var bytes = await _excel.ExportAttendanceRateAsync(troopId, from, to);
+        return File(bytes,
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            $"attendance_rate_{Stamp()}.xlsx");
     }
 
     /// <summary>Export attendance as Excel.</summary>

@@ -1,7 +1,9 @@
 using ClosedXML.Excel;
 using Microsoft.EntityFrameworkCore;
+using ScoutsAttendance.Application.DTOs.Reports;
 using ScoutsAttendance.Application.Services;
 using ScoutsAttendance.Application.Interfaces;
+using ScoutsAttendance.Domain.Enums;
 
 namespace ScoutsAttendance.Infrastructure.Services;
 
@@ -90,6 +92,190 @@ public class ExcelExportService : IExcelExportService
 
         ws.Columns().AdjustToContents();
         ws.SheetView.FreezeRows(3);
+
+        return WorkbookToBytes(wb);
+    }
+
+    // ─── Members Full ──────────────────────────────────────────────────────────
+
+    public async Task<byte[]> ExportMembersFullAsync(Guid? troopId = null)
+    {
+        var query = _uow.Members.Query()
+            .IgnoreQueryFilters()
+            .Include(m => m.Troop)
+            .Include(m => m.MemberPoints)
+            .Where(m => !m.IsDeleted);
+
+        if (troopId.HasValue) query = query.Where(m => m.TroopId == troopId.Value);
+
+        var members = await query
+            .OrderBy(m => m.Troop == null ? "" : m.Troop.Name)
+            .ThenBy(m => m.LastName)
+            .ToListAsync();
+
+        using var wb = new XLWorkbook();
+        var ws = wb.Worksheets.Add("Members");
+
+        const int colCount = 16;
+        AddLogoRow(ws, "Members Full Report — Scouts Attendance System");
+        ws.Range(1, 1, 1, colCount).Merge();
+
+        var headers = new[]
+        {
+            "Custom ID", "Full Name", "Gender", "Troop", "Region", "Phone",
+            "Father Phone", "Mother Phone", "Date of Birth", "Academic Year",
+            "Has Neckerchief", "Year Joined", "Address", "Notes",
+            "Total Points", "Joined"
+        };
+        var hRow = ws.Row(3);
+        for (int i = 0; i < headers.Length; i++) hRow.Cell(i + 1).Value = headers[i];
+        StyleHeader(hRow, headers.Length);
+
+        int row = 4;
+        foreach (var m in members)
+        {
+            var totalPoints = m.MemberPoints?.Sum(p => p.Points) ?? 0;
+            ws.Cell(row, 1).Value  = m.CustomId;
+            ws.Cell(row, 2).Value  = m.FullName;
+            ws.Cell(row, 3).Value  = m.Gender == Gender.Male ? "Male" : "Female";
+            ws.Cell(row, 4).Value  = m.Troop?.Name ?? "";
+            ws.Cell(row, 5).Value  = m.Region ?? "";
+            ws.Cell(row, 6).Value  = m.PhoneNumber ?? "";
+            ws.Cell(row, 7).Value  = m.FatherPhone ?? "";
+            ws.Cell(row, 8).Value  = m.MotherPhone ?? "";
+            ws.Cell(row, 9).Value  = m.DateOfBirth.ToString("yyyy-MM-dd");
+            ws.Cell(row, 10).Value = m.AcademicYear ?? "";
+            ws.Cell(row, 11).Value = m.HasNeckerchief ? "Yes" : "No";
+            ws.Cell(row, 12).Value = m.YearJoined?.ToString() ?? "";
+            ws.Cell(row, 13).Value = m.Address ?? "";
+            ws.Cell(row, 14).Value = m.Notes ?? "";
+            ws.Cell(row, 15).Value = totalPoints;
+            ws.Cell(row, 16).Value = m.CreatedAt.ToString("yyyy-MM-dd");
+
+            if (row % 2 == 0)
+                ws.Range(row, 1, row, colCount).Style.Fill.BackgroundColor = XLColor.FromHtml("#f3f4f9");
+            row++;
+        }
+
+        ws.Columns().AdjustToContents();
+        ws.SheetView.FreezeRows(3);
+        return WorkbookToBytes(wb);
+    }
+
+    // ─── Attendance Rate ───────────────────────────────────────────────────────
+
+    public async Task<IEnumerable<AttendanceRateDto>> GetAttendanceRateAsync(
+        Guid? troopId, DateTime? from, DateTime? to)
+    {
+        var query = _uow.AttendanceRecords.Query()
+            .Include(a => a.Event)
+            .Include(a => a.Member).ThenInclude(m => m.Troop)
+            .Where(a => !a.IsDeleted);
+
+        if (troopId.HasValue) query = query.Where(a => a.Member.TroopId == troopId.Value);
+        if (from.HasValue)    query = query.Where(a => a.Event.EventDate >= from.Value);
+        if (to.HasValue)      query = query.Where(a => a.Event.EventDate <= to.Value);
+
+        var records = await query.ToListAsync();
+
+        return records
+            .GroupBy(a => a.Member)
+            .Select(g => new AttendanceRateDto
+            {
+                MemberId    = g.Key?.Id ?? Guid.Empty,
+                MemberName  = g.Key?.FullName ?? "",
+                TroopName   = g.Key?.Troop?.Name ?? "",
+                TotalEvents = g.Count(),
+                Present     = g.Count(a => a.Status == AttendanceStatus.Present),
+                Late        = g.Count(a => a.Status == AttendanceStatus.Late),
+                Excused     = g.Count(a => a.Status == AttendanceStatus.Excused),
+                Absent      = g.Count(a => a.Status == AttendanceStatus.Absent)
+            })
+            .OrderByDescending(r => r.Rate)
+            .ThenBy(r => r.MemberName);
+    }
+
+    public async Task<byte[]> ExportAttendanceRateAsync(Guid? troopId, DateTime? from, DateTime? to)
+    {
+        var rates = (await GetAttendanceRateAsync(troopId, from, to)).ToList();
+
+        using var wb = new XLWorkbook();
+
+        // ── Sheet 1: Summary ─────────────────────────────────────────────────
+        var wsSummary = wb.Worksheets.Add("Summary");
+        const int sumCols = 8;
+        AddLogoRow(wsSummary, "Attendance Rate Report — Scouts Attendance System");
+        wsSummary.Range(1, 1, 1, sumCols).Merge();
+
+        // Date range subtitle
+        var rangeLabel = $"Period: {(from.HasValue ? from.Value.ToString("yyyy-MM-dd") : "All")} → {(to.HasValue ? to.Value.ToString("yyyy-MM-dd") : "All")}";
+        wsSummary.Cell(2, 1).Value = rangeLabel;
+        wsSummary.Cell(2, 1).Style.Font.Italic = true;
+        wsSummary.Cell(2, 1).Style.Font.FontColor = XLColor.FromHtml("#555555");
+        wsSummary.Range(2, 1, 2, sumCols).Merge();
+
+        var sumHeaders = new[] { "Rank", "Member", "Troop", "Total Events", "Present", "Late", "Excused", "Attendance Rate %" };
+        var shRow = wsSummary.Row(4);
+        for (int i = 0; i < sumHeaders.Length; i++) shRow.Cell(i + 1).Value = sumHeaders[i];
+        StyleHeader(shRow, sumHeaders.Length);
+
+        int sRow = 5;
+        foreach (var r in rates)
+        {
+            wsSummary.Cell(sRow, 1).Value = sRow - 4;   // rank
+            wsSummary.Cell(sRow, 2).Value = r.MemberName;
+            wsSummary.Cell(sRow, 3).Value = r.TroopName;
+            wsSummary.Cell(sRow, 4).Value = r.TotalEvents;
+            wsSummary.Cell(sRow, 5).Value = r.Present;
+            wsSummary.Cell(sRow, 6).Value = r.Late;
+            wsSummary.Cell(sRow, 7).Value = r.Excused;
+            wsSummary.Cell(sRow, 8).Value = r.Rate;
+
+            // Colour-code the rate cell
+            var rateColor = r.Rate switch
+            {
+                >= 90 => XLColor.FromHtml("#c8e6c9"),   // green
+                >= 70 => XLColor.FromHtml("#fff9c4"),   // yellow
+                >= 50 => XLColor.FromHtml("#ffe0b2"),   // orange
+                _     => XLColor.FromHtml("#ffcdd2")    // red
+            };
+            wsSummary.Cell(sRow, 8).Style.Fill.BackgroundColor = rateColor;
+
+            if (sRow % 2 == 0)
+                wsSummary.Range(sRow, 1, sRow, sumCols).Style.Fill.BackgroundColor = XLColor.FromHtml("#f3f4f9");
+            sRow++;
+        }
+        wsSummary.Columns().AdjustToContents();
+        wsSummary.SheetView.FreezeRows(4);
+
+        // ── Sheet 2: Detail (Absent only, for follow-up) ─────────────────────
+        var wsDetail = wb.Worksheets.Add("Absent Detail");
+        const int detCols = 5;
+        AddLogoRow(wsDetail, "Absent Members Detail");
+        wsDetail.Range(1, 1, 1, detCols).Merge();
+
+        var detHeaders = new[] { "Member", "Troop", "Total Events", "Absent", "Absent Rate %" };
+        var dhRow = wsDetail.Row(3);
+        for (int i = 0; i < detHeaders.Length; i++) dhRow.Cell(i + 1).Value = detHeaders[i];
+        StyleHeader(dhRow, detHeaders.Length);
+
+        int dRow = 4;
+        foreach (var r in rates.Where(r => r.Absent > 0).OrderByDescending(r => r.Absent))
+        {
+            wsDetail.Cell(dRow, 1).Value = r.MemberName;
+            wsDetail.Cell(dRow, 2).Value = r.TroopName;
+            wsDetail.Cell(dRow, 3).Value = r.TotalEvents;
+            wsDetail.Cell(dRow, 4).Value = r.Absent;
+            wsDetail.Cell(dRow, 5).Value = r.TotalEvents > 0
+                ? Math.Round(r.Absent * 100.0 / r.TotalEvents, 1)
+                : 0;
+
+            if (dRow % 2 == 0)
+                wsDetail.Range(dRow, 1, dRow, detCols).Style.Fill.BackgroundColor = XLColor.FromHtml("#f3f4f9");
+            dRow++;
+        }
+        wsDetail.Columns().AdjustToContents();
+        wsDetail.SheetView.FreezeRows(3);
 
         return WorkbookToBytes(wb);
     }

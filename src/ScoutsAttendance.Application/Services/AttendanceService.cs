@@ -296,11 +296,12 @@ public class AttendanceService : IAttendanceService
     /// </summary>
     private async Task CreateAutoPointsAsync(AttendanceRecord record, Domain.Entities.Event ev)
     {
+        // Excused earns the same points as Present — the member had a valid excuse.
         decimal pts = record.Status switch
         {
             AttendanceStatus.Present => ev.PresentPoints,
             AttendanceStatus.Late    => ev.LatePoints,
-            AttendanceStatus.Excused => ev.ExcusedPoints,
+            AttendanceStatus.Excused => ev.PresentPoints,   // same as Present
             AttendanceStatus.Absent  => ev.AbsentPoints,
             _                        => 0
         };

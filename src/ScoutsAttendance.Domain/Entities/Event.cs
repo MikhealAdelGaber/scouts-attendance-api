@@ -16,8 +16,8 @@ public class Event : BaseEntity
     public decimal  PresentPoints   { get; set; } = 100m;
     /// <summary>Points awarded when a member is marked Late for this event.</summary>
     public decimal  LatePoints      { get; set; } = 50m;
-    /// <summary>Points awarded when a member is marked Excused for this event.</summary>
-    public decimal  ExcusedPoints   { get; set; } = 50m;
+    /// <summary>Points awarded when a member is marked Excused for this event (same as Present).</summary>
+    public decimal  ExcusedPoints   { get; set; } = 100m;
     /// <summary>Points applied when a member is marked Absent (can be negative).</summary>
     public decimal  AbsentPoints    { get; set; } = -10m;
 

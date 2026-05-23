@@ -18,6 +18,7 @@ public interface IUnitOfWork : IDisposable
     IRepository<Transfer>         Transfers         { get; }
     IRepository<MemberExcuse>     MemberExcuses     { get; }
     IRepository<MemberExamScore>  MemberExamScores  { get; }
+    IRepository<PendingExcuse>    PendingExcuses    { get; }
 
     Task<int> SaveChangesAsync();
 

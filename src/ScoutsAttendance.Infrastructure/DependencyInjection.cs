@@ -4,6 +4,7 @@ using Microsoft.Extensions.DependencyInjection;
 using QuestPDF.Infrastructure;
 using ScoutsAttendance.Application.Interfaces;
 using ScoutsAttendance.Application.Services;
+using ScoutsAttendance.Infrastructure.Services;
 using ScoutsAttendance.Infrastructure.Data;
 using ScoutsAttendance.Infrastructure.Repositories;
 using ScoutsAttendance.Infrastructure.Services;
@@ -50,6 +51,7 @@ public static class DependencyInjection
         });
 
         services.AddScoped<IUnitOfWork, UnitOfWork>();
+        services.AddSingleton<IIpRateLimiter, InMemoryIpRateLimiter>();
         services.AddScoped<IJwtService, JwtService>();
         services.AddScoped<IQrCodeService, QrCodeService>();
         services.AddScoped<ICurrentUserService, CurrentUserService>();

@@ -142,10 +142,11 @@ public class TroopService : ITroopService
         Name = t.Name,
         GroupId = t.GroupId,
         GroupName = t.Group?.Name ?? string.Empty,
-        LeaderId = t.LeaderId,
+        LeaderId   = t.LeaderId,
         LeaderName = t.Leader?.Username,
         MemberCount = t.Members?.Count(m => !m.IsDeleted) ?? 0,
         TotalPoints = t.TroopPoints?.Sum(p => p.Points) ?? 0,
-        CreatedAt = t.CreatedAt
+        CreatedAt   = t.CreatedAt,
+        ShareToken  = t.ShareToken
     };
 }

@@ -26,6 +26,7 @@ public class UnitOfWork : IUnitOfWork
         Transfers         = new GenericRepository<Transfer>(context);
         MemberExcuses     = new GenericRepository<MemberExcuse>(context);
         MemberExamScores  = new GenericRepository<MemberExamScore>(context);
+        PendingExcuses    = new GenericRepository<PendingExcuse>(context);
     }
 
     public IRepository<User>             Users             { get; }
@@ -42,6 +43,7 @@ public class UnitOfWork : IUnitOfWork
     public IRepository<Transfer>         Transfers         { get; }
     public IRepository<MemberExcuse>     MemberExcuses     { get; }
     public IRepository<MemberExamScore>  MemberExamScores  { get; }
+    public IRepository<PendingExcuse>    PendingExcuses    { get; }
 
     public async Task<int> SaveChangesAsync() => await _context.SaveChangesAsync();
 

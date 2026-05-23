@@ -207,6 +207,73 @@ public static class DbSeeder
             try { await context.Database.ExecuteSqlRawAsync(@"CREATE INDEX IF NOT EXISTS ""IX_MemberExcuses_MemberId"" ON ""MemberExcuses"" (""MemberId"")"); } catch { }
             try { await context.Database.ExecuteSqlRawAsync(@"CREATE INDEX IF NOT EXISTS ""IX_MemberExcuses_MemberId_IsActive"" ON ""MemberExcuses"" (""MemberId"", ""IsActive"")"); } catch { }
 
+            // ── ShareToken on Troops ──────────────────────────────────────────────
+            try
+            {
+                await context.Database.ExecuteSqlRawAsync(
+                    @"ALTER TABLE ""Troops"" ADD COLUMN IF NOT EXISTS ""ShareToken"" TEXT NOT NULL DEFAULT ''");
+            }
+            catch { /* safe */ }
+
+            // Backfill existing troops that have an empty ShareToken
+            // Using EF Core to load + update avoids gen_random_uuid() dependency.
+            try
+            {
+                var troopsWithNoToken = await context.Troops
+                    .IgnoreQueryFilters()
+                    .Where(t => t.ShareToken == null || t.ShareToken == string.Empty)
+                    .ToListAsync();
+
+                foreach (var t in troopsWithNoToken)
+                {
+                    t.ShareToken = Guid.NewGuid().ToString("N");
+                    context.Update(t);
+                }
+                if (troopsWithNoToken.Count > 0)
+                    await context.SaveChangesAsync();
+            }
+            catch { /* safe — may fail if column not yet visible in this transaction */ }
+
+            // Unique index on ShareToken (safe to repeat)
+            try
+            {
+                await context.Database.ExecuteSqlRawAsync(
+                    @"CREATE UNIQUE INDEX IF NOT EXISTS ""IX_Troops_ShareToken"" ON ""Troops"" (""ShareToken"") WHERE ""ShareToken"" <> ''");
+            }
+            catch { /* safe */ }
+
+            // ── PendingExcuses table ──────────────────────────────────────────────
+            try
+            {
+                await context.Database.ExecuteSqlRawAsync(@"
+                    CREATE TABLE IF NOT EXISTS ""PendingExcuses"" (
+                        ""Id""               UUID                     NOT NULL,
+                        ""TroopId""          UUID                     NOT NULL,
+                        ""SubmitterName""    TEXT                     NOT NULL DEFAULT '',
+                        ""MemberName""       TEXT                     NOT NULL DEFAULT '',
+                        ""MemberCustomId""   INTEGER,
+                        ""StartDate""        TIMESTAMP WITH TIME ZONE NOT NULL,
+                        ""EndDate""          TIMESTAMP WITH TIME ZONE NOT NULL,
+                        ""Reason""           TEXT                     NOT NULL DEFAULT '',
+                        ""SubmitterIp""      TEXT                     NOT NULL DEFAULT '',
+                        ""Status""           INTEGER                  NOT NULL DEFAULT 0,
+                        ""ReviewNotes""      TEXT,
+                        ""ReviewedBy""       UUID,
+                        ""ReviewedAt""       TIMESTAMP WITH TIME ZONE,
+                        ""ResultingExcuseId"" UUID,
+                        ""CreatedAt""        TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+                        ""UpdatedAt""        TIMESTAMP WITH TIME ZONE,
+                        ""IsDeleted""        BOOLEAN                  NOT NULL DEFAULT FALSE,
+                        CONSTRAINT ""PK_PendingExcuses"" PRIMARY KEY (""Id""),
+                        CONSTRAINT ""FK_PendingExcuses_Troops_TroopId""
+                            FOREIGN KEY (""TroopId"") REFERENCES ""Troops""(""Id"") ON DELETE RESTRICT
+                    )");
+            }
+            catch { /* safe — IF NOT EXISTS handles idempotency */ }
+
+            try { await context.Database.ExecuteSqlRawAsync(@"CREATE INDEX IF NOT EXISTS ""IX_PendingExcuses_TroopId"" ON ""PendingExcuses"" (""TroopId"")"); } catch { }
+            try { await context.Database.ExecuteSqlRawAsync(@"CREATE INDEX IF NOT EXISTS ""IX_PendingExcuses_Status"" ON ""PendingExcuses"" (""Status"")"); } catch { }
+
             // ── 3q–3t. Events table point configuration columns ───────────────────
             // AddEventPointsConfig migration: rename PointValue→PresentPoints and
             // LatePointValue→LatePoints, then add ExcusedPoints and AbsentPoints.

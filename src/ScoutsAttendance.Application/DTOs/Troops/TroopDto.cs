@@ -10,9 +10,10 @@ public class TroopDto
     public string GroupName { get; set; } = string.Empty;
     public Guid? LeaderId { get; set; }
     public string? LeaderName { get; set; }
-    public int MemberCount { get; set; }
-    public decimal TotalPoints { get; set; }
-    public DateTime CreatedAt { get; set; }
+    public int      MemberCount  { get; set; }
+    public decimal  TotalPoints  { get; set; }
+    public DateTime CreatedAt    { get; set; }
+    public string   ShareToken   { get; set; } = string.Empty;
 }
 
 public class CreateTroopDto

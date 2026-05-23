@@ -21,6 +21,7 @@ public class ApplicationDbContext : DbContext
     public DbSet<Transfer>         Transfers         => Set<Transfer>();
     public DbSet<MemberExcuse>     MemberExcuses     => Set<MemberExcuse>();
     public DbSet<MemberExamScore>  MemberExamScores  => Set<MemberExamScore>();
+    public DbSet<PendingExcuse>    PendingExcuses    => Set<PendingExcuse>();
 
     protected override void OnModelCreating(ModelBuilder mb)
     {
@@ -52,6 +53,7 @@ public class ApplicationDbContext : DbContext
         mb.Entity<Troop>(e =>
         {
             e.HasIndex(t => t.GroupId);
+            e.HasIndex(t => t.ShareToken).IsUnique();
             e.HasOne(t => t.Group)
                 .WithMany(g => g.Troops)
                 .HasForeignKey(t => t.GroupId)
@@ -223,6 +225,18 @@ public class ApplicationDbContext : DbContext
                 .OnDelete(DeleteBehavior.Restrict);
         });
 
+        // ─── PendingExcuse ─────────────────────────────────────────────────────
+        mb.Entity<PendingExcuse>(e =>
+        {
+            e.HasIndex(p => p.TroopId);
+            e.HasIndex(p => p.Status);
+            e.Property(p => p.Status).HasConversion<int>();
+            e.HasOne(p => p.Troop)
+                .WithMany()
+                .HasForeignKey(p => p.TroopId)
+                .OnDelete(DeleteBehavior.Restrict);
+        });
+
         // ─── MemberExamScore ───────────────────────────────────────────────────
         mb.Entity<MemberExamScore>(e =>
         {
@@ -250,5 +264,6 @@ public class ApplicationDbContext : DbContext
         mb.Entity<Transfer>().HasQueryFilter(e => !e.IsDeleted);
         mb.Entity<MemberExcuse>().HasQueryFilter(e => !e.IsDeleted);
         mb.Entity<MemberExamScore>().HasQueryFilter(e => !e.IsDeleted);
+        mb.Entity<PendingExcuse>().HasQueryFilter(e => !e.IsDeleted);
     }
 }

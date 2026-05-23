@@ -22,6 +22,7 @@ public static class DependencyInjection
         services.AddScoped<IExportService,         ExportService>();
         services.AddScoped<IExamScoreService,      ExamScoreService>();
         services.AddScoped<IDashboardService,      DashboardService>();
+        services.AddScoped<IPendingExcuseService,  PendingExcuseService>();
         return services;
     }
 }

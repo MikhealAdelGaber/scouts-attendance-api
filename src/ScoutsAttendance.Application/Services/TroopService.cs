@@ -11,6 +11,8 @@ public interface ITroopService
     Task<TroopDto> CreateAsync(CreateTroopDto dto);
     Task<TroopDto?> UpdateAsync(Guid id, UpdateTroopDto dto);
     Task<bool> DeleteAsync(Guid id);
+    /// <summary>Generates a fresh ShareToken for the troop, immediately invalidating the old one.</summary>
+    Task<string?> ResetShareTokenAsync(Guid id);
 }
 
 public class TroopService : ITroopService
@@ -134,6 +136,18 @@ public class TroopService : ITroopService
         });
 
         return true;
+    }
+
+    public async Task<string?> ResetShareTokenAsync(Guid id)
+    {
+        var troop = await _uow.Troops.GetByIdAsync(id);
+        if (troop is null) return null;
+
+        troop.ShareToken = Guid.NewGuid().ToString("N");
+        troop.UpdatedAt  = DateTime.UtcNow;
+        _uow.Troops.Update(troop);
+        await _uow.SaveChangesAsync();
+        return troop.ShareToken;
     }
 
     private static TroopDto MapToDto(Domain.Entities.Troop t) => new()

@@ -52,4 +52,18 @@ public class TroopsController : ControllerBase
         var ok = await _service.DeleteAsync(id);
         return ok ? Ok(ApiResponse.Ok("Troop deleted")) : NotFound(ApiResponse.Fail("Troop not found"));
     }
+
+    /// <summary>
+    /// Generates a new ShareToken for the troop, immediately invalidating the old public link.
+    /// Only GroupLeader and SystemAdmin can reset a token.
+    /// </summary>
+    [HttpPost("{id:guid}/reset-token")]
+    [Authorize(Roles = "SystemAdmin,GroupLeader")]
+    public async Task<ActionResult<ApiResponse<string>>> ResetToken(Guid id)
+    {
+        var newToken = await _service.ResetShareTokenAsync(id);
+        return newToken is null
+            ? NotFound(ApiResponse<string>.Fail("Troop not found"))
+            : Ok(ApiResponse<string>.Ok(newToken, "Share token reset successfully"));
+    }
 }

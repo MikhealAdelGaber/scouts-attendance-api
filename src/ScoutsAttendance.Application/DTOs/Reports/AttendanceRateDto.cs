@@ -13,9 +13,10 @@ public class AttendanceRateDto
 
     /// <summary>
     /// Attendance rate as a percentage 0-100.
-    /// Rate = (Present + Late) / TotalEvents * 100.
-    /// Returns 100 when TotalEvents == 0 (no events in range for that member).
+    /// Rate = (Present + Late + Excused) / TotalEvents × 100.
+    /// Excused members count as "attended" because they have a valid excuse.
+    /// Members with no attendance record default to Absent (not Present).
     /// </summary>
-    public double Rate => TotalEvents == 0 ? 100.0
-        : Math.Round((Present + Late) * 100.0 / TotalEvents, 1);
+    public double Rate => TotalEvents == 0 ? 0.0
+        : Math.Round((Present + Late + Excused) * 100.0 / TotalEvents, 1);
 }

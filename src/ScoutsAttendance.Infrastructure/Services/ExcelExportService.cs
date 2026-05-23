@@ -167,32 +167,93 @@ public class ExcelExportService : IExcelExportService
     public async Task<IEnumerable<AttendanceRateDto>> GetAttendanceRateAsync(
         Guid? troopId, DateTime? from, DateTime? to)
     {
-        var query = _uow.AttendanceRecords.Query()
-            .Include(a => a.Event)
-            .Include(a => a.Member).ThenInclude(m => m.Troop)
-            .Where(a => !a.IsDeleted);
+        // ── 1. Load events in the requested date range ──────────────────────────
+        var evQuery = _uow.Events.Query()
+            .Where(e => !e.IsDeleted);
+        if (from.HasValue) evQuery = evQuery.Where(e => e.EventDate >= from.Value);
+        if (to.HasValue)   evQuery = evQuery.Where(e => e.EventDate <= to.Value);
+        var events = await evQuery.ToListAsync();
+        if (!events.Any()) return [];
 
-        if (troopId.HasValue) query = query.Where(a => a.Member.TroopId == troopId.Value);
-        if (from.HasValue)    query = query.Where(a => a.Event.EventDate >= from.Value);
-        if (to.HasValue)      query = query.Where(a => a.Event.EventDate <= to.Value);
+        // ── 2. Determine relevant group IDs ────────────────────────────────────
+        var groupIds = events.Select(e => e.GroupId).Distinct().ToList();
 
-        var records = await query.ToListAsync();
+        // ── 3. Load members in scope (with excuses for date-range checking) ────
+        var membersQuery = _uow.Members.Query()
+            .Include(m => m.Troop)
+            .Include(m => m.Excuses)
+            .Where(m => groupIds.Contains(m.GroupId) && !m.IsDeleted);
+        if (troopId.HasValue)
+            membersQuery = membersQuery.Where(m => m.TroopId == troopId.Value);
+        var members = await membersQuery.ToListAsync();
+        if (!members.Any()) return [];
 
-        return records
-            .GroupBy(a => a.Member)
-            .Select(g => new AttendanceRateDto
+        // ── 4. Load all attendance records for those events (single round-trip) ─
+        var eventIds = events.Select(e => e.Id).ToList();
+        var allRecords = await _uow.AttendanceRecords.Query()
+            .Where(a => eventIds.Contains(a.EventId) && !a.IsDeleted)
+            .ToListAsync();
+
+        // Lookup: eventId → memberId → status
+        var recordLookup = allRecords
+            .GroupBy(a => a.EventId)
+            .ToDictionary(
+                g => g.Key,
+                g => g.ToDictionary(a => a.MemberId, a => a.Status));
+
+        // ── 5. Compute per-member counts across all applicable events ───────────
+        var results = new List<AttendanceRateDto>(members.Count);
+
+        foreach (var m in members)
+        {
+            int present = 0, late = 0, excused = 0, absent = 0, total = 0;
+
+            foreach (var ev in events)
             {
-                MemberId    = g.Key?.Id ?? Guid.Empty,
-                MemberName  = g.Key?.FullName ?? "",
-                TroopName   = g.Key?.Troop?.Name ?? "",
-                TotalEvents = g.Count(),
-                Present     = g.Count(a => a.Status == AttendanceStatus.Present),
-                Late        = g.Count(a => a.Status == AttendanceStatus.Late),
-                Excused     = g.Count(a => a.Status == AttendanceStatus.Excused),
-                Absent      = g.Count(a => a.Status == AttendanceStatus.Absent)
-            })
-            .OrderByDescending(r => r.Rate)
-            .ThenBy(r => r.MemberName);
+                // An event applies to a member when:
+                //   • The event belongs to the member's group AND
+                //   • The event has no troop scope, OR its troop matches the member's troop
+                if (ev.GroupId != m.GroupId) continue;
+                if (ev.TroopId.HasValue && ev.TroopId != m.TroopId) continue;
+
+                total++;
+
+                if (recordLookup.TryGetValue(ev.Id, out var byMember) &&
+                    byMember.TryGetValue(m.Id, out var status))
+                {
+                    switch (status)
+                    {
+                        case AttendanceStatus.Present: present++; break;
+                        case AttendanceStatus.Late:    late++;    break;
+                        case AttendanceStatus.Excused: excused++; break;
+                        default:                       absent++;  break;
+                    }
+                }
+                else
+                {
+                    // No record for this event → auto-derive status
+                    // Active excuse covering the event date → Excused, else Absent
+                    if (m.HasActiveExcuse(ev.EventDate)) excused++;
+                    else                                 absent++;
+                }
+            }
+
+            if (total == 0) continue; // No applicable events for this member
+
+            results.Add(new AttendanceRateDto
+            {
+                MemberId    = m.Id,
+                MemberName  = m.FullName,
+                TroopName   = m.Troop?.Name ?? "",
+                TotalEvents = total,
+                Present     = present,
+                Late        = late,
+                Excused     = excused,
+                Absent      = absent
+            });
+        }
+
+        return results.OrderByDescending(r => r.Rate).ThenBy(r => r.MemberName);
     }
 
     public async Task<byte[]> ExportAttendanceRateAsync(Guid? troopId, DateTime? from, DateTime? to)

@@ -212,22 +212,64 @@ public class AttendanceService : IAttendanceService
 
     public async Task<AttendanceSummaryDto> GetSummaryAsync(Guid eventId)
     {
-        var ev      = await _uow.Events.GetByIdAsync(eventId);
-        var records = await _uow.AttendanceRecords.FindAsync(a => a.EventId == eventId && !a.IsDeleted);
+        // Load the event to know its group/troop scope and event date
+        var ev = await _uow.Events.GetByIdAsync(eventId);
+        if (ev is null)
+            return new AttendanceSummaryDto { EventId = eventId };
 
-        var list = records.ToList();
+        var eventDate = ev.EventDate.Date;
+
+        // ALL members in scope — same scoping as GetEventMemberStatusesAsync
+        var membersQuery = _uow.Members.Query()
+            .Include(m => m.Excuses)
+            .Where(m => m.GroupId == ev.GroupId && !m.IsDeleted);
+        if (ev.TroopId.HasValue)
+            membersQuery = membersQuery.Where(m => m.TroopId == ev.TroopId.Value);
+        var members = await membersQuery.ToListAsync();
+
+        // Existing attendance records keyed by MemberId
+        var records    = await _uow.AttendanceRecords.FindAsync(
+                             a => a.EventId == eventId && !a.IsDeleted);
+        var recordMap  = records.ToDictionary(r => r.MemberId, r => r.Status);
+
+        // Tally — members with no record get an auto-derived status
+        // (Excused if an active excuse covers the event date, Absent otherwise)
+        int present = 0, late = 0, absent = 0, excused = 0;
+        foreach (var m in members)
+        {
+            if (recordMap.TryGetValue(m.Id, out var status))
+            {
+                switch (status)
+                {
+                    case AttendanceStatus.Present: present++; break;
+                    case AttendanceStatus.Late:    late++;    break;
+                    case AttendanceStatus.Excused: excused++; break;
+                    default:                       absent++;  break;
+                }
+            }
+            else
+            {
+                // No record yet → auto-derive from active excuse coverage
+                if (m.HasActiveExcuse(eventDate)) excused++;
+                else                              absent++;
+            }
+        }
+
+        int total = members.Count;
+        // Rate = (Present + Late + Excused) / TotalMembers × 100
+        double rate = total == 0 ? 0
+            : Math.Round((present + late + excused) * 100.0 / total, 1);
+
         return new AttendanceSummaryDto
         {
             EventId        = eventId,
-            EventName      = ev?.Name ?? string.Empty,
-            TotalMembers   = list.Count,
-            Present        = list.Count(r => r.Status == AttendanceStatus.Present),
-            Late           = list.Count(r => r.Status == AttendanceStatus.Late),
-            Absent         = list.Count(r => r.Status == AttendanceStatus.Absent),
-            Excused        = list.Count(r => r.Status == AttendanceStatus.Excused),
-            AttendanceRate = list.Count == 0 ? 0 :
-                (double)list.Count(r => r.Status is AttendanceStatus.Present or AttendanceStatus.Late) /
-                list.Count * 100
+            EventName      = ev.Name,
+            TotalMembers   = total,
+            Present        = present,
+            Late           = late,
+            Absent         = absent,
+            Excused        = excused,
+            AttendanceRate = rate
         };
     }
 

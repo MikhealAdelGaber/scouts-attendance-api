@@ -15,7 +15,7 @@ public class PointsController : ControllerBase
 
     public PointsController(IPointsService service) => _service = service;
 
-    // ─── Attendance Settings ──────────────────────────────
+    // ─── Attendance Settings ──────────────────────────────────────────────────
 
     [HttpGet("attendance-settings")]
     public async Task<ActionResult<ApiResponse<PointCategoryDto>>> GetAttendanceSettings()
@@ -26,6 +26,7 @@ public class PointsController : ControllerBase
             : Ok(ApiResponse<PointCategoryDto>.Ok(result));
     }
 
+    /// <summary>Update attendance point values — admin / leader only.</summary>
     [HttpPut("attendance-settings/{id:guid}")]
     [Authorize(Roles = "SystemAdmin,GroupLeader")]
     public async Task<ActionResult<ApiResponse<PointCategoryDto>>> UpdateAttendanceSettings(
@@ -37,7 +38,7 @@ public class PointsController : ControllerBase
             : Ok(ApiResponse<PointCategoryDto>.Ok(result, "Attendance points settings saved"));
     }
 
-    // ─── Member Points ────────────────────────────────────
+    // ─── Member Points ────────────────────────────────────────────────────────
 
     [HttpGet("members/{memberId:guid}")]
     public async Task<ActionResult<ApiResponse<MemberPointsSummaryDto>>> GetMemberPoints(Guid memberId)
@@ -46,23 +47,25 @@ public class PointsController : ControllerBase
         return Ok(ApiResponse<MemberPointsSummaryDto>.Ok(result));
     }
 
+    /// <summary>Award points to a member — admin, leader, or attendance user.</summary>
     [HttpPost("members")]
-    [Authorize(Roles = "SystemAdmin,GroupLeader")]
+    [Authorize(Roles = "SystemAdmin,GroupLeader,AttendanceOnly")]
     public async Task<ActionResult<ApiResponse<MemberPointsDto>>> AddMemberPoints([FromBody] AddMemberPointsDto dto)
     {
         var result = await _service.AddMemberPointsAsync(dto);
         return Ok(ApiResponse<MemberPointsDto>.Ok(result, "Points added"));
     }
 
+    /// <summary>Remove a member points record — admin, leader, or attendance user.</summary>
     [HttpDelete("members/{pointsId:guid}")]
-    [Authorize(Roles = "SystemAdmin,GroupLeader")]
+    [Authorize(Roles = "SystemAdmin,GroupLeader,AttendanceOnly")]
     public async Task<ActionResult<ApiResponse>> DeleteMemberPoints(Guid pointsId)
     {
         var ok = await _service.DeleteMemberPointsAsync(pointsId);
         return ok ? Ok(ApiResponse.Ok("Points deleted")) : NotFound(ApiResponse.Fail("Points record not found"));
     }
 
-    // ─── Troop Points ─────────────────────────────────────
+    // ─── Troop Points ─────────────────────────────────────────────────────────
 
     [HttpGet("troops/{troopId:guid}")]
     public async Task<ActionResult<ApiResponse<TroopPointsSummaryDto>>> GetTroopPoints(Guid troopId)
@@ -71,16 +74,18 @@ public class PointsController : ControllerBase
         return Ok(ApiResponse<TroopPointsSummaryDto>.Ok(result));
     }
 
+    /// <summary>Award points to a troop — admin, leader, or attendance user.</summary>
     [HttpPost("troops")]
-    [Authorize(Roles = "SystemAdmin,GroupLeader")]
+    [Authorize(Roles = "SystemAdmin,GroupLeader,AttendanceOnly")]
     public async Task<ActionResult<ApiResponse<TroopPointsDto>>> AddTroopPoints([FromBody] AddTroopPointsDto dto)
     {
         var result = await _service.AddTroopPointsAsync(dto);
         return Ok(ApiResponse<TroopPointsDto>.Ok(result, "Points added"));
     }
 
+    /// <summary>Remove a troop points record — admin, leader, or attendance user.</summary>
     [HttpDelete("troops/{pointsId:guid}")]
-    [Authorize(Roles = "SystemAdmin,GroupLeader")]
+    [Authorize(Roles = "SystemAdmin,GroupLeader,AttendanceOnly")]
     public async Task<ActionResult<ApiResponse>> DeleteTroopPoints(Guid pointsId)
     {
         var ok = await _service.DeleteTroopPointsAsync(pointsId);

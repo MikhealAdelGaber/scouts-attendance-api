@@ -305,6 +305,19 @@ public static class DbSeeder
             try { await context.Database.ExecuteSqlRawAsync(@"CREATE INDEX IF NOT EXISTS ""IX_PendingExcuses_MemberId""  ON ""PendingExcuses"" (""MemberId"")"); } catch { }
             try { await context.Database.ExecuteSqlRawAsync(@"CREATE INDEX IF NOT EXISTS ""IX_PendingExcuses_Status""    ON ""PendingExcuses"" (""Status"")"); } catch { }
 
+            // ── Restore SystemAdmin role for the 'admin' user ─────────────────────
+            // Idempotent: only updates if the role has been accidentally changed.
+            // SystemAdmin = 1, GroupLeader = 2.
+            try
+            {
+                await context.Database.ExecuteSqlRawAsync(@"
+                    UPDATE ""Users""
+                    SET    ""Role"" = 1
+                    WHERE  ""Username"" = 'admin'
+                      AND  ""Role"" <> 1");
+            }
+            catch { /* safe */ }
+
             // ── 3q–3t. Events table point configuration columns ───────────────────
             // AddEventPointsConfig migration: rename PointValue→PresentPoints and
             // LatePointValue→LatePoints, then add ExcusedPoints and AbsentPoints.

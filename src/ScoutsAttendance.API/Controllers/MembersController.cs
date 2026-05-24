@@ -64,7 +64,7 @@ public class MembersController : ControllerBase
     }
 
     [HttpPost]
-    [Authorize(Roles = "SystemAdmin,GroupLeader,AttendanceOnly")]
+    [Authorize(Roles = "SystemAdmin,GroupLeader")]
     public async Task<ActionResult<ApiResponse<MemberDto>>> Create([FromBody] CreateMemberDto dto)
     {
         var result = await _service.CreateAsync(dto);
@@ -72,7 +72,7 @@ public class MembersController : ControllerBase
     }
 
     [HttpPut("{id:guid}")]
-    [Authorize(Roles = "SystemAdmin,GroupLeader,AttendanceOnly")]
+    [Authorize(Roles = "SystemAdmin,GroupLeader")]
     public async Task<ActionResult<ApiResponse<MemberDto>>> Update(Guid id, [FromBody] UpdateMemberDto dto)
     {
         var result = await _service.UpdateAsync(id, dto);

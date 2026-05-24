@@ -7,12 +7,12 @@ using ScoutsAttendance.Application.Services;
 namespace ScoutsAttendance.API.Controllers;
 
 /// <summary>
-/// Authenticated endpoints for GroupLeaders and SystemAdmins to manage
-/// pending excuse submissions made via the public shareable link.
+/// Authenticated endpoints for GroupLeaders, SystemAdmins, and AttendanceOnly users
+/// to manage pending excuse submissions made via the public shareable link.
 /// </summary>
 [ApiController]
 [Route("api/[controller]")]
-[Authorize(Roles = "SystemAdmin,GroupLeader")]
+[Authorize(Roles = "SystemAdmin,GroupLeader,AttendanceOnly")]
 public class PendingExcusesController : ControllerBase
 {
     private readonly IPendingExcuseService _service;

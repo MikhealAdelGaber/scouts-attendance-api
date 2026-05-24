@@ -106,8 +106,13 @@ public class PendingExcuseService : IPendingExcuseService
             .Include(p => p.Member)
             .Where(p => !p.IsDeleted && p.Status == PendingExcuseStatus.Pending);
 
-        // Scope to this user's group unless SystemAdmin
-        if (!_currentUser.IsSystemAdmin && _currentUser.GroupId.HasValue)
+        // AttendanceOnly: scoped to their own troop only
+        if (_currentUser.IsAttendanceOnly && _currentUser.TroopId.HasValue)
+        {
+            query = query.Where(p => p.TroopId == _currentUser.TroopId.Value);
+        }
+        // GroupLeader: scoped to their group
+        else if (!_currentUser.IsSystemAdmin && _currentUser.GroupId.HasValue)
         {
             var groupId = _currentUser.GroupId.Value;
             query = query.Where(p => p.Troop.GroupId == groupId);
@@ -130,7 +135,10 @@ public class PendingExcuseService : IPendingExcuseService
             .Include(p => p.Troop)
             .Where(p => !p.IsDeleted && p.Status == PendingExcuseStatus.Pending);
 
-        if (groupId.HasValue)
+        // AttendanceOnly: count only their troop's pending excuses
+        if (_currentUser.IsAttendanceOnly && _currentUser.TroopId.HasValue)
+            query = query.Where(p => p.TroopId == _currentUser.TroopId.Value);
+        else if (groupId.HasValue)
             query = query.Where(p => p.Troop.GroupId == groupId.Value);
 
         return await query.CountAsync();

@@ -31,7 +31,7 @@ public class EventsController : ControllerBase
     }
 
     [HttpPost]
-    [Authorize(Roles = "SystemAdmin,GroupLeader")]
+    [Authorize(Roles = "SystemAdmin,GroupLeader,AttendanceOnly")]
     public async Task<ActionResult<ApiResponse<EventDto>>> Create([FromBody] CreateEventDto dto)
     {
         var result = await _service.CreateAsync(dto);
@@ -39,7 +39,7 @@ public class EventsController : ControllerBase
     }
 
     [HttpPut("{id:guid}")]
-    [Authorize(Roles = "SystemAdmin,GroupLeader")]
+    [Authorize(Roles = "SystemAdmin,GroupLeader,AttendanceOnly")]
     public async Task<ActionResult<ApiResponse<EventDto>>> Update(Guid id, [FromBody] UpdateEventDto dto)
     {
         var result = await _service.UpdateAsync(id, dto);

@@ -6,8 +6,10 @@ namespace ScoutsAttendance.Infrastructure.Services;
 
 /// <summary>
 /// Photo storage backed by Cloudinary CDN.
-/// Activated automatically when the CLOUDINARY_URL environment variable is set.
-/// Format: cloudinary://api_key:api_secret@cloud_name
+///
+/// Supports two configuration styles (checked in order):
+///   1. CLOUDINARY_URL  = cloudinary://api_key:api_secret@cloud_name
+///   2. CLOUDINARY_CLOUD_NAME + CLOUDINARY_API_KEY + CLOUDINARY_API_SECRET  (individual vars)
 /// </summary>
 public class CloudinaryPhotoService : IPhotoService
 {
@@ -16,10 +18,26 @@ public class CloudinaryPhotoService : IPhotoService
 
     public CloudinaryPhotoService(HttpClient http)
     {
-        // Cloudinary() without arguments reads CLOUDINARY_URL from the environment
-        _cloudinary = new Cloudinary();
-        _cloudinary.Api.Secure = true;
         _http = http;
+
+        // ── Option 1: single CLOUDINARY_URL env var ───────────────────────────
+        var url = Environment.GetEnvironmentVariable("CLOUDINARY_URL");
+        if (!string.IsNullOrWhiteSpace(url))
+        {
+            _cloudinary = new Cloudinary(url);
+        }
+        else
+        {
+            // ── Option 2: three separate env vars ────────────────────────────
+            var cloudName = Environment.GetEnvironmentVariable("CLOUDINARY_CLOUD_NAME") ?? "";
+            var apiKey    = Environment.GetEnvironmentVariable("CLOUDINARY_API_KEY")    ?? "";
+            var apiSecret = Environment.GetEnvironmentVariable("CLOUDINARY_API_SECRET") ?? "";
+
+            var account   = new Account(cloudName, apiKey, apiSecret);
+            _cloudinary   = new Cloudinary(account);
+        }
+
+        _cloudinary.Api.Secure = true;
     }
 
     public async Task<string> UploadAsync(Stream fileStream, string fileName, string memberId)
@@ -45,24 +63,16 @@ public class CloudinaryPhotoService : IPhotoService
 
     public async Task<byte[]?> GetPhotoBytesAsync(string imageUrl)
     {
-        try
-        {
-            return await _http.GetByteArrayAsync(imageUrl);
-        }
-        catch
-        {
-            return null;
-        }
+        try { return await _http.GetByteArrayAsync(imageUrl); }
+        catch { return null; }
     }
 
     public async Task DeleteAsync(string imageUrl)
     {
         try
         {
-            // Extract the Cloudinary public_id from the secure URL.
-            // URL format: https://res.cloudinary.com/{cloud}/image/upload/[v{ver}/]{public_id}.{ext}
             var uri      = new Uri(imageUrl);
-            var segments = uri.Segments; // each segment ends with '/'
+            var segments = uri.Segments;
 
             var uploadIdx = Array.FindIndex(segments, s => s.TrimEnd('/') == "upload");
             if (uploadIdx < 0) return;
@@ -82,9 +92,6 @@ public class CloudinaryPhotoService : IPhotoService
 
             await _cloudinary.DestroyAsync(new DeletionParams(publicId));
         }
-        catch
-        {
-            // Best-effort deletion — never throw.
-        }
+        catch { /* best-effort */ }
     }
 }

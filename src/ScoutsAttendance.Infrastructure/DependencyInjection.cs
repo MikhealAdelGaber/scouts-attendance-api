@@ -60,18 +60,29 @@ public static class DependencyInjection
         services.AddScoped<IMemberImportService, MemberImportService>();
         services.AddScoped<IQrPdfExportService, QrPdfExportService>();
 
-        // Photo storage: Cloudinary when CLOUDINARY_URL is set, local wwwroot otherwise.
+        // Photo storage: Cloudinary when any of the following are set:
+        //   Option 1 — CLOUDINARY_URL = cloudinary://api_key:api_secret@cloud_name
+        //   Option 2 — CLOUDINARY_CLOUD_NAME + CLOUDINARY_API_KEY + CLOUDINARY_API_SECRET
         // IMPORTANT: Railway has an ephemeral filesystem — LocalPhotoService files are lost
-        // on every redeploy. Set CLOUDINARY_URL in Railway environment variables for production.
-        var cloudinaryUrl = Environment.GetEnvironmentVariable("CLOUDINARY_URL");
-        if (!string.IsNullOrWhiteSpace(cloudinaryUrl))
+        // on every redeploy. Set Cloudinary env vars in Railway for production.
+        var cloudinaryUrl    = Environment.GetEnvironmentVariable("CLOUDINARY_URL");
+        var cloudinaryCloud  = Environment.GetEnvironmentVariable("CLOUDINARY_CLOUD_NAME");
+        var cloudinaryKey    = Environment.GetEnvironmentVariable("CLOUDINARY_API_KEY");
+        var cloudinarySecret = Environment.GetEnvironmentVariable("CLOUDINARY_API_SECRET");
+
+        bool useCloudinary = !string.IsNullOrWhiteSpace(cloudinaryUrl) ||
+            (!string.IsNullOrWhiteSpace(cloudinaryCloud) &&
+             !string.IsNullOrWhiteSpace(cloudinaryKey)   &&
+             !string.IsNullOrWhiteSpace(cloudinarySecret));
+
+        if (useCloudinary)
         {
-            Console.WriteLine("[PhotoService] Using Cloudinary (CLOUDINARY_URL is set).");
+            Console.WriteLine("[PhotoService] Using Cloudinary CDN for photo storage.");
             services.AddHttpClient<IPhotoService, CloudinaryPhotoService>();
         }
         else
         {
-            Console.WriteLine("[PhotoService] WARNING: CLOUDINARY_URL not set — using LocalPhotoService (ephemeral, not suitable for production).");
+            Console.WriteLine("[PhotoService] WARNING: No Cloudinary config found — using LocalPhotoService (ephemeral, files lost on redeploy). Set CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY, CLOUDINARY_API_SECRET in Railway.");
             services.AddScoped<IPhotoService, LocalPhotoService>();
         }
 

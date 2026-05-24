@@ -60,15 +60,18 @@ public static class DependencyInjection
         services.AddScoped<IMemberImportService, MemberImportService>();
         services.AddScoped<IQrPdfExportService, QrPdfExportService>();
 
-        // Photo storage: Cloudinary when CLOUDINARY_URL is set, local wwwroot otherwise
+        // Photo storage: Cloudinary when CLOUDINARY_URL is set, local wwwroot otherwise.
+        // IMPORTANT: Railway has an ephemeral filesystem — LocalPhotoService files are lost
+        // on every redeploy. Set CLOUDINARY_URL in Railway environment variables for production.
         var cloudinaryUrl = Environment.GetEnvironmentVariable("CLOUDINARY_URL");
         if (!string.IsNullOrWhiteSpace(cloudinaryUrl))
         {
-            // CloudinaryPhotoService needs an HttpClient for downloading photo bytes (PDF embedding)
+            Console.WriteLine("[PhotoService] Using Cloudinary (CLOUDINARY_URL is set).");
             services.AddHttpClient<IPhotoService, CloudinaryPhotoService>();
         }
         else
         {
+            Console.WriteLine("[PhotoService] WARNING: CLOUDINARY_URL not set — using LocalPhotoService (ephemeral, not suitable for production).");
             services.AddScoped<IPhotoService, LocalPhotoService>();
         }
 

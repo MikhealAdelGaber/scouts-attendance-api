@@ -351,6 +351,92 @@ public static class DbSeeder
                     @"ALTER TABLE ""Events"" ADD COLUMN IF NOT EXISTS ""AbsentPoints"" DECIMAL(10,2) NOT NULL DEFAULT -10");
             }
             catch { /* safe */ }
+
+            // ── Trips feature ─────────────────────────────────────────────────────
+            // Add CanAccessTrips to Users
+            try
+            {
+                await context.Database.ExecuteSqlRawAsync(
+                    @"ALTER TABLE ""Users"" ADD COLUMN IF NOT EXISTS ""CanAccessTrips"" BOOLEAN NOT NULL DEFAULT false");
+            }
+            catch { /* safe */ }
+
+            // Create Trips table
+            try
+            {
+                await context.Database.ExecuteSqlRawAsync(@"
+                    CREATE TABLE IF NOT EXISTS ""Trips"" (
+                        ""Id""           UUID         NOT NULL DEFAULT gen_random_uuid() PRIMARY KEY,
+                        ""Name""         TEXT         NOT NULL DEFAULT '',
+                        ""Description""  TEXT         NOT NULL DEFAULT '',
+                        ""TripDate""     TIMESTAMPTZ  NOT NULL DEFAULT now(),
+                        ""Location""     TEXT         NOT NULL DEFAULT '',
+                        ""Price""        DECIMAL(10,2) NOT NULL DEFAULT 0,
+                        ""SiblingPrice"" DECIMAL(10,2) NOT NULL DEFAULT 0,
+                        ""MaxCapacity""  INTEGER,
+                        ""GroupId""      UUID         NOT NULL,
+                        ""HasPoints""    BOOLEAN      NOT NULL DEFAULT false,
+                        ""PointValue""   INTEGER,
+                        ""Status""       INTEGER      NOT NULL DEFAULT 0,
+                        ""CreatedBy""    TEXT         NOT NULL DEFAULT '',
+                        ""CreatedAt""    TIMESTAMPTZ  NOT NULL DEFAULT now(),
+                        ""UpdatedAt""    TIMESTAMPTZ,
+                        ""IsDeleted""    BOOLEAN      NOT NULL DEFAULT false,
+                        FOREIGN KEY (""GroupId"") REFERENCES ""Groups""(""Id"") ON DELETE RESTRICT
+                    )");
+            }
+            catch { /* already exists */ }
+
+            // Create TripBookings table
+            try
+            {
+                await context.Database.ExecuteSqlRawAsync(@"
+                    CREATE TABLE IF NOT EXISTS ""TripBookings"" (
+                        ""Id""            UUID         NOT NULL DEFAULT gen_random_uuid() PRIMARY KEY,
+                        ""TripId""        UUID         NOT NULL,
+                        ""MemberId""      UUID         NOT NULL,
+                        ""BookingStatus"" INTEGER      NOT NULL DEFAULT 0,
+                        ""IsSibling""     BOOLEAN      NOT NULL DEFAULT false,
+                        ""AmountDue""     DECIMAL(10,2) NOT NULL DEFAULT 0,
+                        ""PaidAt""        TIMESTAMPTZ,
+                        ""Notes""         TEXT         NOT NULL DEFAULT '',
+                        ""CreatedAt""     TIMESTAMPTZ  NOT NULL DEFAULT now(),
+                        ""UpdatedAt""     TIMESTAMPTZ,
+                        ""IsDeleted""     BOOLEAN      NOT NULL DEFAULT false,
+                        FOREIGN KEY (""TripId"")   REFERENCES ""Trips""(""Id"")   ON DELETE CASCADE,
+                        FOREIGN KEY (""MemberId"") REFERENCES ""Members""(""Id"") ON DELETE RESTRICT
+                    )");
+            }
+            catch { /* already exists */ }
+
+            // Create TripAttendanceRecords table
+            try
+            {
+                await context.Database.ExecuteSqlRawAsync(@"
+                    CREATE TABLE IF NOT EXISTS ""TripAttendanceRecords"" (
+                        ""Id""        UUID        NOT NULL DEFAULT gen_random_uuid() PRIMARY KEY,
+                        ""TripId""    UUID        NOT NULL,
+                        ""MemberId""  UUID        NOT NULL,
+                        ""Status""    INTEGER     NOT NULL DEFAULT 1,
+                        ""Notes""     TEXT        NOT NULL DEFAULT '',
+                        ""CreatedAt"" TIMESTAMPTZ NOT NULL DEFAULT now(),
+                        ""UpdatedAt"" TIMESTAMPTZ,
+                        ""IsDeleted"" BOOLEAN     NOT NULL DEFAULT false,
+                        FOREIGN KEY (""TripId"")   REFERENCES ""Trips""(""Id"")   ON DELETE CASCADE,
+                        FOREIGN KEY (""MemberId"") REFERENCES ""Members""(""Id"") ON DELETE RESTRICT
+                    )");
+            }
+            catch { /* already exists */ }
+
+            // Indexes
+            try { await context.Database.ExecuteSqlRawAsync(@"CREATE INDEX IF NOT EXISTS ""IX_Trips_GroupId""         ON ""Trips"" (""GroupId"")"); } catch { }
+            try { await context.Database.ExecuteSqlRawAsync(@"CREATE INDEX IF NOT EXISTS ""IX_Trips_Status""          ON ""Trips"" (""Status"")"); } catch { }
+            try { await context.Database.ExecuteSqlRawAsync(@"CREATE INDEX IF NOT EXISTS ""IX_TripBookings_TripId""   ON ""TripBookings"" (""TripId"")"); } catch { }
+            try { await context.Database.ExecuteSqlRawAsync(@"CREATE INDEX IF NOT EXISTS ""IX_TripBookings_MemberId"" ON ""TripBookings"" (""MemberId"")"); } catch { }
+            try { await context.Database.ExecuteSqlRawAsync(@"CREATE INDEX IF NOT EXISTS ""IX_TripAttRec_TripId""     ON ""TripAttendanceRecords"" (""TripId"")"); } catch { }
+            // Unique constraint (TripId + MemberId) — safe if already exists
+            try { await context.Database.ExecuteSqlRawAsync(@"CREATE UNIQUE INDEX IF NOT EXISTS ""UX_TripBookings_TripMember""   ON ""TripBookings"" (""TripId"", ""MemberId"") WHERE ""IsDeleted"" = false"); } catch { }
+            try { await context.Database.ExecuteSqlRawAsync(@"CREATE UNIQUE INDEX IF NOT EXISTS ""UX_TripAttRec_TripMember""     ON ""TripAttendanceRecords"" (""TripId"", ""MemberId"") WHERE ""IsDeleted"" = false"); } catch { }
         }
         else
         {

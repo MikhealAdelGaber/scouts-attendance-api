@@ -18,6 +18,7 @@ public class UserDto
     public bool     CanTakeAttendance { get; set; }
     public bool     CanEditMembers    { get; set; }
     public bool     CanCreateEvents   { get; set; }
+    public bool     CanAccessTrips    { get; set; }
     public DateTime CreatedAt  { get; set; }
 }
 
@@ -32,6 +33,7 @@ public class CreateUserDto
     public bool  CanTakeAttendance { get; set; } = false;
     public bool  CanEditMembers    { get; set; } = false;
     public bool  CanCreateEvents   { get; set; } = false;
+    public bool  CanAccessTrips    { get; set; } = false;
 }
 
 public class UpdateUserDto
@@ -43,6 +45,7 @@ public class UpdateUserDto
     public bool  CanTakeAttendance { get; set; }
     public bool  CanEditMembers    { get; set; }
     public bool  CanCreateEvents   { get; set; }
+    public bool  CanAccessTrips    { get; set; }
 }
 
 public class UserLeaderDto

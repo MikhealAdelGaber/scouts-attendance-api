@@ -27,6 +27,11 @@ public class UnitOfWork : IUnitOfWork
         MemberExcuses     = new GenericRepository<MemberExcuse>(context);
         MemberExamScores  = new GenericRepository<MemberExamScore>(context);
         PendingExcuses    = new GenericRepository<PendingExcuse>(context);
+
+        // Trips
+        Trips                 = new GenericRepository<Trip>(context);
+        TripBookings          = new GenericRepository<TripBooking>(context);
+        TripAttendanceRecords = new GenericRepository<TripAttendanceRecord>(context);
     }
 
     public IRepository<User>             Users             { get; }
@@ -44,6 +49,11 @@ public class UnitOfWork : IUnitOfWork
     public IRepository<MemberExcuse>     MemberExcuses     { get; }
     public IRepository<MemberExamScore>  MemberExamScores  { get; }
     public IRepository<PendingExcuse>    PendingExcuses    { get; }
+
+    // Trips
+    public IRepository<Trip>                 Trips                 { get; }
+    public IRepository<TripBooking>          TripBookings          { get; }
+    public IRepository<TripAttendanceRecord> TripAttendanceRecords { get; }
 
     public async Task<int> SaveChangesAsync() => await _context.SaveChangesAsync();
 

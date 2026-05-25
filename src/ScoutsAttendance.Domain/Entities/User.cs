@@ -17,6 +17,7 @@ public class User : BaseEntity
     public bool CanTakeAttendance { get; set; } = false;
     public bool CanEditMembers    { get; set; } = false;
     public bool CanCreateEvents   { get; set; } = false;
+    public bool CanAccessTrips    { get; set; } = false;
 
     // Navigation
     public Group?  Group  { get; set; }

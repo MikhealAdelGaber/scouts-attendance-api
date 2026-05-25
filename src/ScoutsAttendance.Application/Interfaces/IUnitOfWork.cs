@@ -20,6 +20,11 @@ public interface IUnitOfWork : IDisposable
     IRepository<MemberExamScore>  MemberExamScores  { get; }
     IRepository<PendingExcuse>    PendingExcuses    { get; }
 
+    // ── Trips ─────────────────────────────────────────────────────────────────
+    IRepository<Trip>                 Trips                 { get; }
+    IRepository<TripBooking>          TripBookings          { get; }
+    IRepository<TripAttendanceRecord> TripAttendanceRecords { get; }
+
     Task<int> SaveChangesAsync();
 
     /// <summary>

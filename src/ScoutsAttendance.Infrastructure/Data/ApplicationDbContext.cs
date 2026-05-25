@@ -23,6 +23,11 @@ public class ApplicationDbContext : DbContext
     public DbSet<MemberExamScore>  MemberExamScores  => Set<MemberExamScore>();
     public DbSet<PendingExcuse>    PendingExcuses    => Set<PendingExcuse>();
 
+    // ── Trips ─────────────────────────────────────────────────────────────────
+    public DbSet<Trip>                 Trips                 => Set<Trip>();
+    public DbSet<TripBooking>          TripBookings          => Set<TripBooking>();
+    public DbSet<TripAttendanceRecord> TripAttendanceRecords => Set<TripAttendanceRecord>();
+
     protected override void OnModelCreating(ModelBuilder mb)
     {
         base.OnModelCreating(mb);
@@ -270,5 +275,53 @@ public class ApplicationDbContext : DbContext
         mb.Entity<MemberExcuse>().HasQueryFilter(e => !e.IsDeleted);
         mb.Entity<MemberExamScore>().HasQueryFilter(e => !e.IsDeleted);
         mb.Entity<PendingExcuse>().HasQueryFilter(e => !e.IsDeleted);
+
+        // ─── Trip ──────────────────────────────────────────────────────────────
+        mb.Entity<Trip>(e =>
+        {
+            e.HasIndex(t => t.GroupId);
+            e.HasIndex(t => t.Status);
+            e.Property(t => t.Status).HasConversion<int>();
+            e.Property(t => t.Price).HasColumnType("decimal(10,2)");
+            e.Property(t => t.SiblingPrice).HasColumnType("decimal(10,2)");
+            e.HasOne(t => t.Group)
+                .WithMany()
+                .HasForeignKey(t => t.GroupId)
+                .OnDelete(DeleteBehavior.Restrict);
+        });
+        mb.Entity<Trip>().HasQueryFilter(e => !e.IsDeleted);
+
+        // ─── TripBooking ───────────────────────────────────────────────────────
+        mb.Entity<TripBooking>(e =>
+        {
+            e.HasIndex(b => new { b.TripId, b.MemberId }).IsUnique();
+            e.HasIndex(b => b.BookingStatus);
+            e.Property(b => b.BookingStatus).HasConversion<int>();
+            e.Property(b => b.AmountDue).HasColumnType("decimal(10,2)");
+            e.HasOne(b => b.Trip)
+                .WithMany(t => t.Bookings)
+                .HasForeignKey(b => b.TripId)
+                .OnDelete(DeleteBehavior.Cascade);
+            e.HasOne(b => b.Member)
+                .WithMany()
+                .HasForeignKey(b => b.MemberId)
+                .OnDelete(DeleteBehavior.Restrict);
+        });
+        mb.Entity<TripBooking>().HasQueryFilter(e => !e.IsDeleted);
+
+        // ─── TripAttendanceRecord ──────────────────────────────────────────────
+        mb.Entity<TripAttendanceRecord>(e =>
+        {
+            e.HasIndex(r => new { r.TripId, r.MemberId }).IsUnique();
+            e.HasOne(r => r.Trip)
+                .WithMany(t => t.AttendanceRecords)
+                .HasForeignKey(r => r.TripId)
+                .OnDelete(DeleteBehavior.Cascade);
+            e.HasOne(r => r.Member)
+                .WithMany()
+                .HasForeignKey(r => r.MemberId)
+                .OnDelete(DeleteBehavior.Restrict);
+        });
+        mb.Entity<TripAttendanceRecord>().HasQueryFilter(e => !e.IsDeleted);
     }
 }

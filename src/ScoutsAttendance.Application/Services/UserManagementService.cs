@@ -90,6 +90,7 @@ public class UserManagementService : IUserManagementService
         user.CanTakeAttendance = dto.CanTakeAttendance;
         user.CanEditMembers    = dto.CanEditMembers;
         user.CanCreateEvents   = dto.CanCreateEvents;
+        user.CanAccessTrips    = dto.CanAccessTrips;
         user.UpdatedAt         = DateTime.UtcNow;
 
         _uow.Users.Update(user);
@@ -169,6 +170,7 @@ public class UserManagementService : IUserManagementService
         CanTakeAttendance = u.CanTakeAttendance,
         CanEditMembers    = u.CanEditMembers,
         CanCreateEvents   = u.CanCreateEvents,
+        CanAccessTrips    = u.CanAccessTrips,
         CreatedAt         = u.CreatedAt
     };
 }

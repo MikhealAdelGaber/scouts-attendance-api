@@ -30,6 +30,8 @@ public class JwtService : IJwtService
                        || user.CanEditMembers;
         bool canEvents = user.Role == Domain.Enums.UserRole.SystemAdmin
                        || user.CanCreateEvents;
+        bool canTrips  = user.Role == Domain.Enums.UserRole.SystemAdmin
+                       || user.CanAccessTrips;
 
         var claims = new[]
         {
@@ -41,7 +43,8 @@ public class JwtService : IJwtService
             new Claim("troopId",           user.TroopId?.ToString() ?? string.Empty),
             new Claim("canTakeAttendance", canAttend.ToString().ToLower()),
             new Claim("canEditMembers",    canEdit.ToString().ToLower()),
-            new Claim("canCreateEvents",   canEvents.ToString().ToLower())
+            new Claim("canCreateEvents",   canEvents.ToString().ToLower()),
+            new Claim("canAccessTrips",    canTrips.ToString().ToLower())
         };
 
         var token = new JwtSecurityToken(

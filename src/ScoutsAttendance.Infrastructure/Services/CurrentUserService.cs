@@ -75,6 +75,8 @@ public class CurrentUserService : ICurrentUserService
                                    || IsSystemAdmin;
     public bool CanCreateEvents   => ReadBoolClaim("canCreateEvents")
                                    || IsSystemAdmin;
+    public bool CanAccessTrips    => ReadBoolClaim("canAccessTrips")
+                                   || IsSystemAdmin;
 
     private bool ReadBoolClaim(string name)
     {

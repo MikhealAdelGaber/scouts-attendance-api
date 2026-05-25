@@ -19,4 +19,5 @@ public interface ICurrentUserService
     bool    CanTakeAttendance  { get; }
     bool    CanEditMembers     { get; }
     bool    CanCreateEvents    { get; }
+    bool    CanAccessTrips     { get; }
 }

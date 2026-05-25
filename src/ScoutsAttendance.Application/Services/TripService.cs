@@ -287,6 +287,9 @@ public class TripService : ITripService
             var rec = await _uow.TripAttendanceRecords.Query()
                 .FirstOrDefaultAsync(r => r.TripId == tripId && r.MemberId == entry.MemberId && !r.IsDeleted);
 
+            // Capture previous status before overwriting
+            bool wasPresent = rec?.Status == 0;
+
             if (rec is null)
             {
                 rec = new TripAttendanceRecord
@@ -305,22 +308,27 @@ public class TripService : ITripService
                 rec.UpdatedAt = DateTime.UtcNow;
                 _uow.TripAttendanceRecords.Update(rec);
             }
-        }
 
-        // Award points if configured (Present = status 0)
-        if (trip.HasPoints && trip.PointValue.HasValue)
-        {
-            foreach (var entry in dto.Records.Where(e => e.Status == 0))
+            // Award points only on the first transition TO Present (status 0).
+            // Guard with AnyAsync so re-saving "Present" never creates duplicate rows.
+            if (trip.HasPoints && trip.PointValue.HasValue
+                && entry.Status == 0 && !wasPresent)
             {
-                var mp = new MemberPoints
+                var noteKey = $"Trip attendance: {trip.Name}";
+                var alreadyAwarded = await _uow.MemberPoints.AnyAsync(
+                    p => p.MemberId == entry.MemberId && p.Note == noteKey);
+
+                if (!alreadyAwarded)
                 {
-                    MemberId    = entry.MemberId,
-                    Points      = trip.PointValue.Value,
-                    Date        = DateTime.UtcNow,
-                    Note        = $"Trip attendance: {trip.Name}",
-                    AddedBy     = Guid.Empty   // system-awarded
-                };
-                await _uow.MemberPoints.AddAsync(mp);
+                    await _uow.MemberPoints.AddAsync(new MemberPoints
+                    {
+                        MemberId = entry.MemberId,
+                        Points   = trip.PointValue.Value,
+                        Date     = DateTime.UtcNow,
+                        Note     = noteKey,
+                        AddedBy  = Guid.Empty   // system-awarded
+                    });
+                }
             }
         }
 

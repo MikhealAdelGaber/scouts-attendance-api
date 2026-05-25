@@ -208,10 +208,9 @@ public class TripsController : ControllerBase
 
     /// <summary>
     /// Toggle paid status for a booking.
-    /// GroupLeader+ only — AttendanceOnly can view payment status but not modify it.
+    /// All roles with CanAccessTrips (GroupLeader AND AttendanceOnly) can mark paid.
     /// </summary>
     [HttpPost("{tripId:guid}/bookings/{bookingId:guid}/mark-paid")]
-    [Authorize(Roles = "SystemAdmin,GroupLeader")]
     public async Task<ActionResult<ApiResponse<TripBookingDto>>> MarkPaid(Guid tripId, Guid bookingId)
     {
         var deny = RequireTripsPermission();

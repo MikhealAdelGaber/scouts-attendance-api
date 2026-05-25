@@ -15,6 +15,9 @@ public class UsersController : ControllerBase
 
     public UsersController(IUserManagementService service) => _service = service;
 
+    private Guid CurrentUserId => Guid.Parse(
+        User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)!.Value);
+
     /// <summary>List all users (SystemAdmin only).</summary>
     [HttpGet]
     [Authorize(Roles = "SystemAdmin")]
@@ -64,6 +67,36 @@ public class UsersController : ControllerBase
         return ok
             ? Ok(ApiResponse.Ok("User deleted"))
             : NotFound(ApiResponse.Fail("User not found"));
+    }
+
+    /// <summary>Admin changes any user's password (no old password required).</summary>
+    [HttpPost("{id:guid}/change-password")]
+    [Authorize(Roles = "SystemAdmin")]
+    public async Task<ActionResult<ApiResponse>> AdminChangePassword(Guid id, [FromBody] AdminChangePasswordDto dto)
+    {
+        var ok = await _service.AdminChangePasswordAsync(id, dto.NewPassword);
+        return ok
+            ? Ok(ApiResponse.Ok("Password changed successfully"))
+            : NotFound(ApiResponse.Fail("User not found"));
+    }
+
+    /// <summary>Toggles a user's IsActive flag. Cannot be used on own account.</summary>
+    [HttpPost("{id:guid}/toggle-status")]
+    [Authorize(Roles = "SystemAdmin")]
+    public async Task<ActionResult<ApiResponse<UserDto>>> ToggleStatus(Guid id)
+    {
+        try
+        {
+            var result = await _service.ToggleStatusAsync(id, CurrentUserId);
+            return result is null
+                ? NotFound(ApiResponse<UserDto>.Fail("User not found"))
+                : Ok(ApiResponse<UserDto>.Ok(result,
+                    result.IsActive ? "User activated" : "User deactivated"));
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(ApiResponse<UserDto>.Fail(ex.Message));
+        }
     }
 
     /// <summary>

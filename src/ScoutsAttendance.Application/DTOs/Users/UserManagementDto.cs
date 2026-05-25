@@ -52,3 +52,8 @@ public class UserLeaderDto
     public string Email    { get; set; } = string.Empty;
     public string Display  { get; set; } = string.Empty;  // "username (email)"
 }
+
+public class AdminChangePasswordDto
+{
+    [Required, MinLength(8)] public string NewPassword { get; set; } = string.Empty;
+}

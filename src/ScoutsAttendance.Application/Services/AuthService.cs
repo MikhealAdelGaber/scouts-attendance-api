@@ -7,9 +7,11 @@ using ScoutsAttendance.Domain.Enums;
 
 namespace ScoutsAttendance.Application.Services;
 
+public record LoginResult(TokenResponseDto? Token, string? ErrorMessage);
+
 public interface IAuthService
 {
-    Task<TokenResponseDto?> LoginAsync(LoginDto dto);
+    Task<LoginResult> LoginAsync(LoginDto dto);
     Task<TokenResponseDto?> RegisterAsync(RegisterDto dto);
     Task<bool> ChangePasswordAsync(Guid userId, string currentPassword, string newPassword);
 }
@@ -27,26 +29,33 @@ public class AuthService : IAuthService
         _logger = logger;
     }
 
-    public async Task<TokenResponseDto?> LoginAsync(LoginDto dto)
+    public async Task<LoginResult> LoginAsync(LoginDto dto)
     {
+        // Find user by username (ignoring IsActive so we can return a specific message)
         var user = await _uow.Users.FindSingleAsync(u =>
-            u.Username == dto.Username && !u.IsDeleted && u.IsActive);
+            u.Username == dto.Username && !u.IsDeleted);
 
+        // Wrong username or wrong password → generic message (don't reveal which)
         if (user is null || !BCrypt.Net.BCrypt.Verify(dto.Password, user.PasswordHash))
-            return null;
+            return new LoginResult(null, "Invalid username or password.");
+
+        // Correct credentials but account is deactivated
+        if (!user.IsActive)
+            return new LoginResult(null,
+                "Your account has been deactivated. Please contact your administrator.");
 
         var token = _jwt.GenerateToken(user);
-        return new TokenResponseDto
+        return new LoginResult(new TokenResponseDto
         {
-            Token = token,
-            Username = user.Username,
-            Email = user.Email,
-            Role = user.Role.ToString(),
-            UserId = user.Id,
-            GroupId = user.GroupId,
-            TroopId = user.TroopId,
+            Token     = token,
+            Username  = user.Username,
+            Email     = user.Email,
+            Role      = user.Role.ToString(),
+            UserId    = user.Id,
+            GroupId   = user.GroupId,
+            TroopId   = user.TroopId,
             ExpiresAt = DateTime.UtcNow.AddHours(24)
-        };
+        }, null);
     }
 
     public async Task<TokenResponseDto?> RegisterAsync(RegisterDto dto)

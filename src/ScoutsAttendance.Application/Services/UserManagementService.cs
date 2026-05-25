@@ -14,6 +14,8 @@ public interface IUserManagementService
     Task<UserDto?> UpdateAsync(Guid id, UpdateUserDto dto);
     Task<bool> DeleteAsync(Guid id);
     Task<IEnumerable<UserLeaderDto>> GetAvailableLeadersAsync();
+    Task<bool> AdminChangePasswordAsync(Guid id, string newPassword);
+    Task<UserDto?> ToggleStatusAsync(Guid id, Guid requesterId);
 }
 
 public class UserManagementService : IUserManagementService
@@ -103,6 +105,35 @@ public class UserManagementService : IUserManagementService
         _uow.Users.SoftDelete(user);
         await _uow.SaveChangesAsync();
         return true;
+    }
+
+    /// <summary>Admin sets a user's password without needing the old one.</summary>
+    public async Task<bool> AdminChangePasswordAsync(Guid id, string newPassword)
+    {
+        var user = await _uow.Users.GetByIdAsync(id);
+        if (user is null || user.IsDeleted) return false;
+
+        user.PasswordHash = BCrypt.Net.BCrypt.HashPassword(newPassword);
+        user.UpdatedAt    = DateTime.UtcNow;
+        _uow.Users.Update(user);
+        await _uow.SaveChangesAsync();
+        return true;
+    }
+
+    /// <summary>Toggles IsActive for the given user. SystemAdmin cannot deactivate themselves.</summary>
+    public async Task<UserDto?> ToggleStatusAsync(Guid id, Guid requesterId)
+    {
+        if (id == requesterId)
+            throw new InvalidOperationException("You cannot deactivate your own account.");
+
+        var user = await _uow.Users.GetByIdAsync(id);
+        if (user is null || user.IsDeleted) return null;
+
+        user.IsActive  = !user.IsActive;
+        user.UpdatedAt = DateTime.UtcNow;
+        _uow.Users.Update(user);
+        await _uow.SaveChangesAsync();
+        return await GetByIdAsync(id);
     }
 
     /// <summary>Returns users eligible to be set as a troop leader.</summary>

@@ -18,8 +18,9 @@ public class AuthController : ControllerBase
     public async Task<ActionResult<ApiResponse<TokenResponseDto>>> Login([FromBody] LoginDto dto)
     {
         var result = await _auth.LoginAsync(dto);
-        if (result is null) return Unauthorized(ApiResponse.Fail("Invalid credentials"));
-        return Ok(ApiResponse<TokenResponseDto>.Ok(result, "Login successful"));
+        if (result.Token is null)
+            return Unauthorized(ApiResponse.Fail(result.ErrorMessage ?? "Invalid credentials"));
+        return Ok(ApiResponse<TokenResponseDto>.Ok(result.Token, "Login successful"));
     }
 
     [HttpPost("register")]

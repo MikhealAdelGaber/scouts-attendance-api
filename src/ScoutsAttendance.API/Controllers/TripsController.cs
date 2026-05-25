@@ -51,16 +51,28 @@ public class TripsController : ControllerBase
         return Ok(ApiResponse<TripDto>.Ok(trip));
     }
 
-    /// <summary>Create a new trip (scoped to caller's group).</summary>
+    /// <summary>Create a new trip (scoped to caller's group; SystemAdmin must supply GroupId in body).</summary>
     [HttpPost]
     [Authorize(Roles = "SystemAdmin,GroupLeader")]
     public async Task<ActionResult<ApiResponse<TripDto>>> Create([FromBody] CreateTripDto dto)
     {
         if (!_current.CanAccessTrips) return Forbid();
 
-        var groupId = _current.GroupId ?? Guid.Empty;
-        if (!_current.IsSystemAdmin && groupId == Guid.Empty)
-            return BadRequest(ApiResponse<TripDto>.Fail("No group assigned to your account."));
+        Guid groupId;
+        if (_current.IsSystemAdmin)
+        {
+            // SystemAdmin must supply a GroupId in the DTO (they have no automatic group)
+            if (!dto.GroupId.HasValue || dto.GroupId == Guid.Empty)
+                return BadRequest(ApiResponse<TripDto>.Fail("SystemAdmin must specify a GroupId when creating a trip."));
+            groupId = dto.GroupId.Value;
+        }
+        else
+        {
+            // GroupLeader / AttendanceOnly: auto-set from JWT
+            groupId = _current.GroupId ?? Guid.Empty;
+            if (groupId == Guid.Empty)
+                return BadRequest(ApiResponse<TripDto>.Fail("No group assigned to your account. Contact a system administrator."));
+        }
 
         var result = await _trips.CreateAsync(dto, groupId, _current.Username);
         return Ok(ApiResponse<TripDto>.Ok(result, "Trip created"));
@@ -73,7 +85,12 @@ public class TripsController : ControllerBase
     {
         if (!_current.CanAccessTrips) return Forbid();
 
-        var result = await _trips.UpdateAsync(id, dto, _current.GroupId, _current.IsSystemAdmin);
+        // For SystemAdmin: if they supplied a GroupId override in the DTO, use it
+        var callerGroupId = (_current.IsSystemAdmin && dto.GroupId.HasValue)
+            ? dto.GroupId
+            : _current.GroupId;
+
+        var result = await _trips.UpdateAsync(id, dto, callerGroupId, _current.IsSystemAdmin);
         return result is null
             ? NotFound(ApiResponse<TripDto>.Fail("Trip not found"))
             : Ok(ApiResponse<TripDto>.Ok(result, "Trip updated"));

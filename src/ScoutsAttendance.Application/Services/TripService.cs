@@ -64,7 +64,7 @@ public class TripService : ITripService
         var trip = new Trip
         {
             Name         = dto.Name.Trim(),
-            Description  = dto.Description.Trim(),
+            Description  = (dto.Description ?? string.Empty).Trim(),
             TripDate     = DateTime.SpecifyKind(dto.TripDate, DateTimeKind.Utc),
             Location     = dto.Location.Trim(),
             Price        = dto.Price,
@@ -88,17 +88,20 @@ public class TripService : ITripService
         if (trip is null || trip.IsDeleted) return null;
         if (!isAdmin && trip.GroupId != callerGroupId) return null;
 
-        trip.Name        = dto.Name.Trim();
-        trip.Description = dto.Description.Trim();
-        trip.TripDate    = DateTime.SpecifyKind(dto.TripDate, DateTimeKind.Utc);
-        trip.Location    = dto.Location.Trim();
-        trip.Price       = dto.Price;
+        trip.Name         = dto.Name.Trim();
+        trip.Description  = (dto.Description ?? string.Empty).Trim();
+        trip.TripDate     = DateTime.SpecifyKind(dto.TripDate, DateTimeKind.Utc);
+        trip.Location     = dto.Location.Trim();
+        trip.Price        = dto.Price;
         trip.SiblingPrice = dto.SiblingPrice;
-        trip.MaxCapacity = dto.MaxCapacity;
-        trip.HasPoints   = dto.HasPoints;
-        trip.PointValue  = dto.HasPoints ? dto.PointValue : null;
-        trip.Status      = dto.Status;
-        trip.UpdatedAt   = DateTime.UtcNow;
+        trip.MaxCapacity  = dto.MaxCapacity;
+        trip.HasPoints    = dto.HasPoints;
+        trip.PointValue   = dto.HasPoints ? dto.PointValue : null;
+        trip.Status       = dto.Status;
+        // SystemAdmin can re-assign to a different group via the DTO
+        if (dto.GroupId.HasValue && dto.GroupId.Value != Guid.Empty)
+            trip.GroupId  = dto.GroupId.Value;
+        trip.UpdatedAt    = DateTime.UtcNow;
 
         _uow.Trips.Update(trip);
         await _uow.SaveChangesAsync();
@@ -123,7 +126,7 @@ public class TripService : ITripService
     public async Task<IEnumerable<TripBookingDto>> GetBookingsAsync(Guid tripId)
     {
         var bookings = await _uow.TripBookings.Query()
-            .Include(b => b.Member)
+            .Include(b => b.Member).ThenInclude(m => m!.Troop)
             .Where(b => b.TripId == tripId && !b.IsDeleted)
             .OrderBy(b => b.BookingStatus)
             .ThenBy(b => b.CreatedAt)
@@ -136,6 +139,7 @@ public class TripService : ITripService
     {
         var trip = await _uow.Trips.Query()
             .Include(t => t.Bookings.Where(b => !b.IsDeleted))
+                .ThenInclude(b => b.Member).ThenInclude(m => m!.Troop)
             .FirstOrDefaultAsync(t => t.Id == tripId && !t.IsDeleted)
             ?? throw new InvalidOperationException("Trip not found.");
 
@@ -175,7 +179,7 @@ public class TripService : ITripService
         await _uow.SaveChangesAsync();
 
         var saved = await _uow.TripBookings.Query()
-            .Include(b => b.Member)
+            .Include(b => b.Member).ThenInclude(m => m!.Troop)
             .FirstAsync(b => b.Id == booking.Id);
 
         return MapBooking(saved);
@@ -184,7 +188,7 @@ public class TripService : ITripService
     public async Task<TripBookingDto?> CancelBookingAsync(Guid bookingId)
     {
         var booking = await _uow.TripBookings.Query()
-            .Include(b => b.Member)
+            .Include(b => b.Member).ThenInclude(m => m!.Troop)
             .FirstOrDefaultAsync(b => b.Id == bookingId && !b.IsDeleted);
 
         if (booking is null) return null;
@@ -228,7 +232,7 @@ public class TripService : ITripService
     public async Task<TripBookingDto?> MarkPaidAsync(Guid bookingId)
     {
         var booking = await _uow.TripBookings.Query()
-            .Include(b => b.Member)
+            .Include(b => b.Member).ThenInclude(m => m!.Troop)
             .FirstOrDefaultAsync(b => b.Id == bookingId && !b.IsDeleted);
 
         if (booking is null) return null;
@@ -248,7 +252,7 @@ public class TripService : ITripService
     {
         // Return confirmed bookings with their attendance status (default Absent if not marked yet)
         var bookings = await _uow.TripBookings.Query()
-            .Include(b => b.Member)
+            .Include(b => b.Member).ThenInclude(m => m!.Troop)
             .Where(b => b.TripId == tripId && b.BookingStatus == BookingStatus.Confirmed && !b.IsDeleted)
             .OrderBy(b => b.Member!.FirstName)
             .ToListAsync();
@@ -262,12 +266,13 @@ public class TripService : ITripService
             var rec = existing.FirstOrDefault(r => r.MemberId == b.MemberId);
             return new TripAttendanceDto
             {
-                TripId        = tripId,
-                MemberId      = b.MemberId,
-                MemberName    = b.Member?.FullName ?? "",
+                TripId         = tripId,
+                MemberId       = b.MemberId,
+                MemberName     = b.Member?.FullName ?? "",
+                TroopName      = b.Member?.Troop?.Name ?? "",
                 MemberCustomId = b.Member?.CustomId ?? 0,
-                Status        = rec?.Status ?? 1,  // 1 = Absent
-                Notes         = rec?.Notes ?? ""
+                Status         = rec?.Status ?? 1,  // 1 = Absent
+                Notes          = rec?.Notes ?? ""
             };
         });
     }
@@ -352,17 +357,19 @@ public class TripService : ITripService
 
     private static TripBookingDto MapBooking(TripBooking b) => new()
     {
-        Id              = b.Id,
-        TripId          = b.TripId,
-        MemberId        = b.MemberId,
-        MemberName      = b.Member?.FullName ?? "",
-        MemberCustomId  = b.Member?.CustomId ?? 0,
-        BookingStatus   = b.BookingStatus,
-        StatusName      = b.BookingStatus.ToString(),
-        IsSibling       = b.IsSibling,
-        AmountDue       = b.AmountDue,
-        PaidAt          = b.PaidAt,
-        Notes           = b.Notes,
-        CreatedAt       = b.CreatedAt
+        Id             = b.Id,
+        TripId         = b.TripId,
+        MemberId       = b.MemberId,
+        MemberName     = b.Member?.FullName ?? "",
+        TroopName      = b.Member?.Troop?.Name ?? "",
+        MemberCustomId = b.Member?.CustomId ?? 0,
+        BookingStatus  = b.BookingStatus,
+        StatusName     = b.BookingStatus.ToString(),
+        IsSibling      = b.IsSibling,
+        AmountDue      = b.AmountDue,
+        IsPaid         = b.PaidAt.HasValue,
+        PaidAt         = b.PaidAt,
+        Notes          = b.Notes,
+        CreatedAt      = b.CreatedAt
     };
 }

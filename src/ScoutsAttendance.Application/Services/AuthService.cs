@@ -45,16 +45,27 @@ public class AuthService : IAuthService
                 "Your account has been deactivated. Please contact your administrator.");
 
         var token = _jwt.GenerateToken(user);
+
+        // Compute effective permissions (same logic as JwtService)
+        bool canAttend = user.Role == UserRole.SystemAdmin || user.Role == UserRole.AttendanceOnly || user.CanTakeAttendance;
+        bool canEdit   = user.Role == UserRole.SystemAdmin || user.CanEditMembers;
+        bool canEvents = user.Role == UserRole.SystemAdmin || user.CanCreateEvents;
+        bool canTrips  = user.Role == UserRole.SystemAdmin || user.CanAccessTrips;
+
         return new LoginResult(new TokenResponseDto
         {
-            Token     = token,
-            Username  = user.Username,
-            Email     = user.Email,
-            Role      = user.Role.ToString(),
-            UserId    = user.Id,
-            GroupId   = user.GroupId,
-            TroopId   = user.TroopId,
-            ExpiresAt = DateTime.UtcNow.AddHours(24)
+            Token              = token,
+            Username           = user.Username,
+            Email              = user.Email,
+            Role               = user.Role.ToString(),
+            UserId             = user.Id,
+            GroupId            = user.GroupId,
+            TroopId            = user.TroopId,
+            ExpiresAt          = DateTime.UtcNow.AddHours(24),
+            CanTakeAttendance  = canAttend,
+            CanEditMembers     = canEdit,
+            CanCreateEvents    = canEvents,
+            CanAccessTrips     = canTrips
         }, null);
     }
 
@@ -77,16 +88,24 @@ public class AuthService : IAuthService
         await _uow.SaveChangesAsync();
 
         var token = _jwt.GenerateToken(user);
+        bool canAttendR = user.Role == UserRole.SystemAdmin || user.Role == UserRole.AttendanceOnly || user.CanTakeAttendance;
+        bool canEditR   = user.Role == UserRole.SystemAdmin || user.CanEditMembers;
+        bool canEventsR = user.Role == UserRole.SystemAdmin || user.CanCreateEvents;
+        bool canTripsR  = user.Role == UserRole.SystemAdmin || user.CanAccessTrips;
         return new TokenResponseDto
         {
-            Token = token,
-            Username = user.Username,
-            Email = user.Email,
-            Role = user.Role.ToString(),
-            UserId = user.Id,
-            GroupId = user.GroupId,
-            TroopId = user.TroopId,
-            ExpiresAt = DateTime.UtcNow.AddHours(24)
+            Token             = token,
+            Username          = user.Username,
+            Email             = user.Email,
+            Role              = user.Role.ToString(),
+            UserId            = user.Id,
+            GroupId           = user.GroupId,
+            TroopId           = user.TroopId,
+            ExpiresAt         = DateTime.UtcNow.AddHours(24),
+            CanTakeAttendance = canAttendR,
+            CanEditMembers    = canEditR,
+            CanCreateEvents   = canEventsR,
+            CanAccessTrips    = canTripsR
         };
     }
 

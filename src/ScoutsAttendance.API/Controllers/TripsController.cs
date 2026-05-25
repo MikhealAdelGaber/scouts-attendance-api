@@ -12,13 +12,42 @@ namespace ScoutsAttendance.API.Controllers;
 [Authorize]
 public class TripsController : ControllerBase
 {
-    private readonly ITripService         _trips;
-    private readonly ICurrentUserService  _current;
+    private readonly ITripService        _trips;
+    private readonly ICurrentUserService _current;
 
     public TripsController(ITripService trips, ICurrentUserService current)
     {
         _trips   = trips;
         _current = current;
+    }
+
+    // ─── Helpers ─────────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Shared permission gate for all trip endpoints.
+    /// Returns a 403 result when the caller lacks CanAccessTrips; null means OK.
+    /// </summary>
+    private ActionResult? RequireTripsPermission() =>
+        _current.CanAccessTrips
+            ? null
+            : StatusCode(403, ApiResponse.Fail("You don't have permission to access Trips & Camps."));
+
+    /// <summary>
+    /// Verifies the caller (non-SystemAdmin) owns the trip with <paramref name="tripId"/>.
+    /// Returns null on success; a 403 or 404 result if the check fails.
+    /// </summary>
+    private async Task<ActionResult?> RequireTripGroupAccessAsync(Guid tripId)
+    {
+        if (_current.IsSystemAdmin) return null;             // admins see everything
+
+        var trip = await _trips.GetByIdAsync(tripId);
+        if (trip is null)
+            return NotFound(ApiResponse.Fail("Trip not found"));
+
+        if (trip.GroupId != _current.GroupId)
+            return StatusCode(403, ApiResponse.Fail("You don't have permission to access this trip."));
+
+        return null;
     }
 
     // ─── Trip CRUD ────────────────────────────────────────────────────────────
@@ -27,65 +56,71 @@ public class TripsController : ControllerBase
     [HttpGet]
     public async Task<ActionResult<ApiResponse<IEnumerable<TripDto>>>> GetAll()
     {
-        if (!_current.CanAccessTrips)
-            return Forbid();
+        var deny = RequireTripsPermission();
+        if (deny is not null) return deny;
 
         var groupId = _current.IsSystemAdmin ? (Guid?)null : _current.GroupId;
         var result  = await _trips.GetAllAsync(groupId);
         return Ok(ApiResponse<IEnumerable<TripDto>>.Ok(result));
     }
 
-    /// <summary>Get a single trip with its bookings.</summary>
+    /// <summary>Get a single trip.</summary>
     [HttpGet("{id:guid}")]
     public async Task<ActionResult<ApiResponse<TripDto>>> GetById(Guid id)
     {
-        if (!_current.CanAccessTrips) return Forbid();
+        var deny = RequireTripsPermission();
+        if (deny is not null) return deny;
 
         var trip = await _trips.GetByIdAsync(id);
-        if (trip is null) return NotFound(ApiResponse<TripDto>.Fail("Trip not found"));
+        if (trip is null)
+            return NotFound(ApiResponse<TripDto>.Fail("Trip not found"));
 
-        // Scope check
         if (!_current.IsSystemAdmin && trip.GroupId != _current.GroupId)
-            return Forbid();
+            return StatusCode(403, ApiResponse.Fail("You don't have permission to access this trip."));
 
         return Ok(ApiResponse<TripDto>.Ok(trip));
     }
 
-    /// <summary>Create a new trip (scoped to caller's group; SystemAdmin must supply GroupId in body).</summary>
+    /// <summary>
+    /// Create a new trip.
+    /// SystemAdmin must supply a GroupId in the body (they have no automatic group).
+    /// GroupLeader/AttendanceOnly get GroupId auto-set from JWT.
+    /// </summary>
     [HttpPost]
     [Authorize(Roles = "SystemAdmin,GroupLeader")]
     public async Task<ActionResult<ApiResponse<TripDto>>> Create([FromBody] CreateTripDto dto)
     {
-        if (!_current.CanAccessTrips) return Forbid();
+        var deny = RequireTripsPermission();
+        if (deny is not null) return deny;
 
         Guid groupId;
         if (_current.IsSystemAdmin)
         {
-            // SystemAdmin must supply a GroupId in the DTO (they have no automatic group)
             if (!dto.GroupId.HasValue || dto.GroupId == Guid.Empty)
-                return BadRequest(ApiResponse<TripDto>.Fail("SystemAdmin must specify a GroupId when creating a trip."));
+                return BadRequest(ApiResponse<TripDto>.Fail(
+                    "SystemAdmin must specify a GroupId when creating a trip."));
             groupId = dto.GroupId.Value;
         }
         else
         {
-            // GroupLeader / AttendanceOnly: auto-set from JWT
             groupId = _current.GroupId ?? Guid.Empty;
             if (groupId == Guid.Empty)
-                return BadRequest(ApiResponse<TripDto>.Fail("No group assigned to your account. Contact a system administrator."));
+                return BadRequest(ApiResponse<TripDto>.Fail(
+                    "No group assigned to your account. Contact a system administrator."));
         }
 
         var result = await _trips.CreateAsync(dto, groupId, _current.Username);
         return Ok(ApiResponse<TripDto>.Ok(result, "Trip created"));
     }
 
-    /// <summary>Update a trip.</summary>
+    /// <summary>Update a trip (GroupLeader+ only).</summary>
     [HttpPut("{id:guid}")]
     [Authorize(Roles = "SystemAdmin,GroupLeader")]
     public async Task<ActionResult<ApiResponse<TripDto>>> Update(Guid id, [FromBody] UpdateTripDto dto)
     {
-        if (!_current.CanAccessTrips) return Forbid();
+        var deny = RequireTripsPermission();
+        if (deny is not null) return deny;
 
-        // For SystemAdmin: if they supplied a GroupId override in the DTO, use it
         var callerGroupId = (_current.IsSystemAdmin && dto.GroupId.HasValue)
             ? dto.GroupId
             : _current.GroupId;
@@ -96,11 +131,14 @@ public class TripsController : ControllerBase
             : Ok(ApiResponse<TripDto>.Ok(result, "Trip updated"));
     }
 
-    /// <summary>Delete a trip.</summary>
+    /// <summary>Delete a trip (GroupLeader+ only).</summary>
     [HttpDelete("{id:guid}")]
     [Authorize(Roles = "SystemAdmin,GroupLeader")]
     public async Task<ActionResult<ApiResponse>> Delete(Guid id)
     {
+        var deny = RequireTripsPermission();
+        if (deny is not null) return deny;
+
         var ok = await _trips.DeleteAsync(id, _current.GroupId, _current.IsSystemAdmin);
         return ok
             ? Ok(ApiResponse.Ok("Trip deleted"))
@@ -109,21 +147,33 @@ public class TripsController : ControllerBase
 
     // ─── Bookings ─────────────────────────────────────────────────────────────
 
-    /// <summary>List all bookings for a trip.</summary>
+    /// <summary>List all bookings for a trip (all roles with CanAccessTrips).</summary>
     [HttpGet("{tripId:guid}/bookings")]
     public async Task<ActionResult<ApiResponse<IEnumerable<TripBookingDto>>>> GetBookings(Guid tripId)
     {
-        if (!_current.CanAccessTrips) return Forbid();
+        var deny = RequireTripsPermission();
+        if (deny is not null) return deny;
+
+        var scope = await RequireTripGroupAccessAsync(tripId);
+        if (scope is not null) return scope;
+
         var result = await _trips.GetBookingsAsync(tripId);
         return Ok(ApiResponse<IEnumerable<TripBookingDto>>.Ok(result));
     }
 
-    /// <summary>Book a member on a trip.</summary>
+    /// <summary>
+    /// Book a member on a trip.
+    /// All roles with CanAccessTrips can add bookings (GroupLeader AND AttendanceOnly).
+    /// </summary>
     [HttpPost("{tripId:guid}/bookings")]
     public async Task<ActionResult<ApiResponse<TripBookingDto>>> BookMember(
         Guid tripId, [FromBody] CreateBookingDto dto)
     {
-        if (!_current.CanAccessTrips) return Forbid();
+        var deny = RequireTripsPermission();
+        if (deny is not null) return deny;
+
+        var scope = await RequireTripGroupAccessAsync(tripId);
+        if (scope is not null) return scope;
 
         try
         {
@@ -136,22 +186,40 @@ public class TripsController : ControllerBase
         }
     }
 
-    /// <summary>Cancel a booking (and promote first waiting-list member if needed).</summary>
+    /// <summary>
+    /// Cancel a booking and promote the first waiting-list member if needed.
+    /// GroupLeader+ only — AttendanceOnly cannot remove bookings.
+    /// </summary>
     [HttpDelete("{tripId:guid}/bookings/{bookingId:guid}")]
+    [Authorize(Roles = "SystemAdmin,GroupLeader")]
     public async Task<ActionResult<ApiResponse<TripBookingDto>>> CancelBooking(Guid tripId, Guid bookingId)
     {
-        if (!_current.CanAccessTrips) return Forbid();
+        var deny = RequireTripsPermission();
+        if (deny is not null) return deny;
+
+        var scope = await RequireTripGroupAccessAsync(tripId);
+        if (scope is not null) return scope;
+
         var result = await _trips.CancelBookingAsync(bookingId);
         return result is null
             ? NotFound(ApiResponse<TripBookingDto>.Fail("Booking not found"))
             : Ok(ApiResponse<TripBookingDto>.Ok(result, "Booking cancelled"));
     }
 
-    /// <summary>Toggle paid status for a booking.</summary>
+    /// <summary>
+    /// Toggle paid status for a booking.
+    /// GroupLeader+ only — AttendanceOnly can view payment status but not modify it.
+    /// </summary>
     [HttpPost("{tripId:guid}/bookings/{bookingId:guid}/mark-paid")]
+    [Authorize(Roles = "SystemAdmin,GroupLeader")]
     public async Task<ActionResult<ApiResponse<TripBookingDto>>> MarkPaid(Guid tripId, Guid bookingId)
     {
-        if (!_current.CanAccessTrips) return Forbid();
+        var deny = RequireTripsPermission();
+        if (deny is not null) return deny;
+
+        var scope = await RequireTripGroupAccessAsync(tripId);
+        if (scope is not null) return scope;
+
         var result = await _trips.MarkPaidAsync(bookingId);
         return result is null
             ? NotFound(ApiResponse<TripBookingDto>.Fail("Booking not found"))
@@ -160,21 +228,33 @@ public class TripsController : ControllerBase
 
     // ─── Attendance ───────────────────────────────────────────────────────────
 
-    /// <summary>Get attendance for a trip (confirmed members).</summary>
+    /// <summary>Get attendance for a trip (all roles with CanAccessTrips).</summary>
     [HttpGet("{tripId:guid}/attendance")]
     public async Task<ActionResult<ApiResponse<IEnumerable<TripAttendanceDto>>>> GetAttendance(Guid tripId)
     {
-        if (!_current.CanAccessTrips) return Forbid();
+        var deny = RequireTripsPermission();
+        if (deny is not null) return deny;
+
+        var scope = await RequireTripGroupAccessAsync(tripId);
+        if (scope is not null) return scope;
+
         var result = await _trips.GetAttendanceAsync(tripId);
         return Ok(ApiResponse<IEnumerable<TripAttendanceDto>>.Ok(result));
     }
 
-    /// <summary>Save attendance for a trip (upsert).</summary>
+    /// <summary>
+    /// Save attendance for a trip (upsert).
+    /// All roles with CanAccessTrips can mark attendance (GroupLeader AND AttendanceOnly).
+    /// </summary>
     [HttpPost("{tripId:guid}/attendance")]
     public async Task<ActionResult<ApiResponse>> SaveAttendance(
         Guid tripId, [FromBody] SaveTripAttendanceDto dto)
     {
-        if (!_current.CanAccessTrips) return Forbid();
+        var deny = RequireTripsPermission();
+        if (deny is not null) return deny;
+
+        var scope = await RequireTripGroupAccessAsync(tripId);
+        if (scope is not null) return scope;
 
         try
         {

@@ -14,11 +14,16 @@ public class TripsController : ControllerBase
 {
     private readonly ITripService        _trips;
     private readonly ICurrentUserService _current;
+    private readonly ITripExportService  _export;
 
-    public TripsController(ITripService trips, ICurrentUserService current)
+    public TripsController(
+        ITripService        trips,
+        ICurrentUserService current,
+        ITripExportService  export)
     {
         _trips   = trips;
         _current = current;
+        _export  = export;
     }
 
     // ─── Helpers ─────────────────────────────────────────────────────────────
@@ -188,10 +193,9 @@ public class TripsController : ControllerBase
 
     /// <summary>
     /// Cancel a booking and promote the first waiting-list member if needed.
-    /// GroupLeader+ only — AttendanceOnly cannot remove bookings.
+    /// All roles with CanAccessTrips (GroupLeader AND AttendanceOnly) can cancel bookings.
     /// </summary>
     [HttpDelete("{tripId:guid}/bookings/{bookingId:guid}")]
-    [Authorize(Roles = "SystemAdmin,GroupLeader")]
     public async Task<ActionResult<ApiResponse<TripBookingDto>>> CancelBooking(Guid tripId, Guid bookingId)
     {
         var deny = RequireTripsPermission();
@@ -264,5 +268,43 @@ public class TripsController : ControllerBase
         {
             return BadRequest(ApiResponse.Fail(ex.Message));
         }
+    }
+
+    // ─── Export ───────────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Export trip data as Excel (.xlsx).
+    /// All roles with CanAccessTrips can export.
+    /// </summary>
+    [HttpGet("{tripId:guid}/export/excel")]
+    public async Task<IActionResult> ExportExcel(Guid tripId)
+    {
+        var deny = RequireTripsPermission();
+        if (deny is not null) return deny;
+
+        var scope = await RequireTripGroupAccessAsync(tripId);
+        if (scope is not null) return scope;
+
+        var (bytes, filename) = await _export.ExportExcelAsync(tripId);
+        return File(bytes,
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            filename);
+    }
+
+    /// <summary>
+    /// Export trip data as PDF.
+    /// All roles with CanAccessTrips can export.
+    /// </summary>
+    [HttpGet("{tripId:guid}/export/pdf")]
+    public async Task<IActionResult> ExportPdf(Guid tripId)
+    {
+        var deny = RequireTripsPermission();
+        if (deny is not null) return deny;
+
+        var scope = await RequireTripGroupAccessAsync(tripId);
+        if (scope is not null) return scope;
+
+        var (bytes, filename) = await _export.ExportPdfAsync(tripId, _current.Username);
+        return File(bytes, "application/pdf", filename);
     }
 }

@@ -60,6 +60,7 @@ public static class DependencyInjection
         services.AddScoped<IMemberImportService, MemberImportService>();
         services.AddScoped<IQrPdfExportService, QrPdfExportService>();
         services.AddScoped<ITripService, TripService>();
+        services.AddScoped<ITripExportService, TripExportService>();
 
         // Photo storage: Cloudinary when any of the following are set:
         //   Option 1 — CLOUDINARY_URL = cloudinary://api_key:api_secret@cloud_name

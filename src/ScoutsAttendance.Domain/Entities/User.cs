@@ -20,6 +20,7 @@ public class User : BaseEntity
     public bool CanAccessTrips    { get; set; } = false;
 
     // Page-access permissions (default true — existing users keep full access)
+    public bool CanAccessDashboard   { get; set; } = true;
     public bool CanAccessTroops      { get; set; } = true;
     public bool CanAccessMembers     { get; set; } = true;
     public bool CanAccessExcuses     { get; set; } = true;

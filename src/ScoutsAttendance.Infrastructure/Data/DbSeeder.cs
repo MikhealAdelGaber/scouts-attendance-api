@@ -381,6 +381,7 @@ public static class DbSeeder
             // Each statement is written out literally (no interpolation) to avoid EF1002.
             foreach (var sql in new[]
             {
+                @"ALTER TABLE ""Users"" ADD COLUMN IF NOT EXISTS ""CanAccessDashboard""   BOOLEAN NOT NULL DEFAULT true",
                 @"ALTER TABLE ""Users"" ADD COLUMN IF NOT EXISTS ""CanAccessTroops""      BOOLEAN NOT NULL DEFAULT true",
                 @"ALTER TABLE ""Users"" ADD COLUMN IF NOT EXISTS ""CanAccessMembers""     BOOLEAN NOT NULL DEFAULT true",
                 @"ALTER TABLE ""Users"" ADD COLUMN IF NOT EXISTS ""CanAccessExcuses""     BOOLEAN NOT NULL DEFAULT true",

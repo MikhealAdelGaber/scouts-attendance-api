@@ -49,6 +49,7 @@ public class JwtService : IJwtService
             new Claim("canCreateEvents",   canEvents.ToString().ToLower()),
             new Claim("canAccessTrips",    canTrips.ToString().ToLower()),
             // Page-access permissions
+            new Claim("canAccessDashboard",   B(user.CanAccessDashboard).ToString().ToLower()),
             new Claim("canAccessTroops",      B(user.CanAccessTroops).ToString().ToLower()),
             new Claim("canAccessMembers",     B(user.CanAccessMembers).ToString().ToLower()),
             new Claim("canAccessExcuses",     B(user.CanAccessExcuses).ToString().ToLower()),

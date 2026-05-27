@@ -72,6 +72,7 @@ public class UserManagementService : IUserManagementService
             CanCreateEvents   = canEvents,
             CanAccessTrips    = dto.CanAccessTrips,
             // Page-access permissions
+            CanAccessDashboard   = dto.CanAccessDashboard,
             CanAccessTroops      = dto.CanAccessTroops,
             CanAccessMembers     = dto.CanAccessMembers,
             CanAccessExcuses     = dto.CanAccessExcuses,
@@ -103,6 +104,7 @@ public class UserManagementService : IUserManagementService
         user.CanCreateEvents   = dto.CanCreateEvents;
         user.CanAccessTrips    = dto.CanAccessTrips;
         // Page-access permissions
+        user.CanAccessDashboard   = dto.CanAccessDashboard;
         user.CanAccessTroops      = dto.CanAccessTroops;
         user.CanAccessMembers     = dto.CanAccessMembers;
         user.CanAccessExcuses     = dto.CanAccessExcuses;
@@ -193,6 +195,7 @@ public class UserManagementService : IUserManagementService
         CanCreateEvents   = u.CanCreateEvents,
         CanAccessTrips    = u.CanAccessTrips,
         // Page-access permissions
+        CanAccessDashboard   = u.CanAccessDashboard,
         CanAccessTroops      = u.CanAccessTroops,
         CanAccessMembers     = u.CanAccessMembers,
         CanAccessExcuses     = u.CanAccessExcuses,

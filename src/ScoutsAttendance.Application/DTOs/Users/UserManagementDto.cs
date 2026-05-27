@@ -20,6 +20,7 @@ public class UserDto
     public bool     CanCreateEvents   { get; set; }
     public bool     CanAccessTrips    { get; set; }
     // Page-access permissions
+    public bool     CanAccessDashboard   { get; set; }
     public bool     CanAccessTroops      { get; set; }
     public bool     CanAccessMembers     { get; set; }
     public bool     CanAccessExcuses     { get; set; }
@@ -45,6 +46,7 @@ public class CreateUserDto
     public bool  CanCreateEvents   { get; set; } = false;
     public bool  CanAccessTrips    { get; set; } = false;
     // Page-access permissions — all true by default for new users
+    public bool  CanAccessDashboard   { get; set; } = true;
     public bool  CanAccessTroops      { get; set; } = true;
     public bool  CanAccessMembers     { get; set; } = true;
     public bool  CanAccessExcuses     { get; set; } = true;
@@ -67,6 +69,7 @@ public class UpdateUserDto
     public bool  CanCreateEvents   { get; set; }
     public bool  CanAccessTrips    { get; set; }
     // Page-access permissions
+    public bool  CanAccessDashboard   { get; set; } = true;
     public bool  CanAccessTroops      { get; set; } = true;
     public bool  CanAccessMembers     { get; set; } = true;
     public bool  CanAccessExcuses     { get; set; } = true;

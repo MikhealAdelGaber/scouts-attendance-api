@@ -377,6 +377,24 @@ public static class DbSeeder
             }
             catch { /* safe */ }
 
+            // ── Page-access permission columns on Users (default TRUE so existing users keep access)
+            // Each statement is written out literally (no interpolation) to avoid EF1002.
+            foreach (var sql in new[]
+            {
+                @"ALTER TABLE ""Users"" ADD COLUMN IF NOT EXISTS ""CanAccessTroops""      BOOLEAN NOT NULL DEFAULT true",
+                @"ALTER TABLE ""Users"" ADD COLUMN IF NOT EXISTS ""CanAccessMembers""     BOOLEAN NOT NULL DEFAULT true",
+                @"ALTER TABLE ""Users"" ADD COLUMN IF NOT EXISTS ""CanAccessExcuses""     BOOLEAN NOT NULL DEFAULT true",
+                @"ALTER TABLE ""Users"" ADD COLUMN IF NOT EXISTS ""CanAccessEvents""      BOOLEAN NOT NULL DEFAULT true",
+                @"ALTER TABLE ""Users"" ADD COLUMN IF NOT EXISTS ""CanAccessAttendance""  BOOLEAN NOT NULL DEFAULT true",
+                @"ALTER TABLE ""Users"" ADD COLUMN IF NOT EXISTS ""CanAccessPoints""      BOOLEAN NOT NULL DEFAULT true",
+                @"ALTER TABLE ""Users"" ADD COLUMN IF NOT EXISTS ""CanAccessLeaderboard"" BOOLEAN NOT NULL DEFAULT true",
+                @"ALTER TABLE ""Users"" ADD COLUMN IF NOT EXISTS ""CanAccessExamScores""  BOOLEAN NOT NULL DEFAULT true",
+                @"ALTER TABLE ""Users"" ADD COLUMN IF NOT EXISTS ""CanAccessReports""     BOOLEAN NOT NULL DEFAULT true",
+            })
+            {
+                try { await context.Database.ExecuteSqlRawAsync(sql); } catch { /* safe — column already exists */ }
+            }
+
             // Create Trips table
             try
             {

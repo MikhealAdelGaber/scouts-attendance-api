@@ -44,6 +44,16 @@ public class ApplicationDbContext : DbContext
             e.Property(u => u.CanTakeAttendance).HasDefaultValue(false);
             e.Property(u => u.CanEditMembers).HasDefaultValue(false);
             e.Property(u => u.CanCreateEvents).HasDefaultValue(false);
+            // Page-access permissions default to true so existing users are not locked out
+            e.Property(u => u.CanAccessTroops).HasDefaultValue(true);
+            e.Property(u => u.CanAccessMembers).HasDefaultValue(true);
+            e.Property(u => u.CanAccessExcuses).HasDefaultValue(true);
+            e.Property(u => u.CanAccessEvents).HasDefaultValue(true);
+            e.Property(u => u.CanAccessAttendance).HasDefaultValue(true);
+            e.Property(u => u.CanAccessPoints).HasDefaultValue(true);
+            e.Property(u => u.CanAccessLeaderboard).HasDefaultValue(true);
+            e.Property(u => u.CanAccessExamScores).HasDefaultValue(true);
+            e.Property(u => u.CanAccessReports).HasDefaultValue(true);
         });
 
         // ─── Group ─────────────────────────────────────────────────────────────

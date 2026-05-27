@@ -19,6 +19,16 @@ public class UserDto
     public bool     CanEditMembers    { get; set; }
     public bool     CanCreateEvents   { get; set; }
     public bool     CanAccessTrips    { get; set; }
+    // Page-access permissions
+    public bool     CanAccessTroops      { get; set; }
+    public bool     CanAccessMembers     { get; set; }
+    public bool     CanAccessExcuses     { get; set; }
+    public bool     CanAccessEvents      { get; set; }
+    public bool     CanAccessAttendance  { get; set; }
+    public bool     CanAccessPoints      { get; set; }
+    public bool     CanAccessLeaderboard { get; set; }
+    public bool     CanAccessExamScores  { get; set; }
+    public bool     CanAccessReports     { get; set; }
     public DateTime CreatedAt  { get; set; }
 }
 
@@ -34,6 +44,16 @@ public class CreateUserDto
     public bool  CanEditMembers    { get; set; } = false;
     public bool  CanCreateEvents   { get; set; } = false;
     public bool  CanAccessTrips    { get; set; } = false;
+    // Page-access permissions — all true by default for new users
+    public bool  CanAccessTroops      { get; set; } = true;
+    public bool  CanAccessMembers     { get; set; } = true;
+    public bool  CanAccessExcuses     { get; set; } = true;
+    public bool  CanAccessEvents      { get; set; } = true;
+    public bool  CanAccessAttendance  { get; set; } = true;
+    public bool  CanAccessPoints      { get; set; } = true;
+    public bool  CanAccessLeaderboard { get; set; } = true;
+    public bool  CanAccessExamScores  { get; set; } = true;
+    public bool  CanAccessReports     { get; set; } = true;
 }
 
 public class UpdateUserDto
@@ -46,6 +66,16 @@ public class UpdateUserDto
     public bool  CanEditMembers    { get; set; }
     public bool  CanCreateEvents   { get; set; }
     public bool  CanAccessTrips    { get; set; }
+    // Page-access permissions
+    public bool  CanAccessTroops      { get; set; } = true;
+    public bool  CanAccessMembers     { get; set; } = true;
+    public bool  CanAccessExcuses     { get; set; } = true;
+    public bool  CanAccessEvents      { get; set; } = true;
+    public bool  CanAccessAttendance  { get; set; } = true;
+    public bool  CanAccessPoints      { get; set; } = true;
+    public bool  CanAccessLeaderboard { get; set; } = true;
+    public bool  CanAccessExamScores  { get; set; } = true;
+    public bool  CanAccessReports     { get; set; } = true;
 }
 
 public class UserLeaderDto

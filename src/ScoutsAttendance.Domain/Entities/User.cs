@@ -13,11 +13,22 @@ public class User : BaseEntity
     public Guid? TroopId   { get; set; }
     public bool IsActive   { get; set; } = true;
 
-    // Fine-grained permissions (stored on the entity; also embedded in JWT)
+    // Fine-grained action permissions (stored on entity; embedded in JWT)
     public bool CanTakeAttendance { get; set; } = false;
     public bool CanEditMembers    { get; set; } = false;
     public bool CanCreateEvents   { get; set; } = false;
     public bool CanAccessTrips    { get; set; } = false;
+
+    // Page-access permissions (default true — existing users keep full access)
+    public bool CanAccessTroops      { get; set; } = true;
+    public bool CanAccessMembers     { get; set; } = true;
+    public bool CanAccessExcuses     { get; set; } = true;
+    public bool CanAccessEvents      { get; set; } = true;
+    public bool CanAccessAttendance  { get; set; } = true;
+    public bool CanAccessPoints      { get; set; } = true;
+    public bool CanAccessLeaderboard { get; set; } = true;
+    public bool CanAccessExamScores  { get; set; } = true;
+    public bool CanAccessReports     { get; set; } = true;
 
     // Navigation
     public Group?  Group  { get; set; }

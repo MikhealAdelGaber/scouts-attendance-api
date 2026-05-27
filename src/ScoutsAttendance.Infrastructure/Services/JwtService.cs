@@ -22,16 +22,18 @@ public class JwtService : IJwtService
         var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(_config["Jwt:Key"]!));
         var creds = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);
 
-        // Derive effective permissions from role + explicit flags
-        bool canAttend = user.Role == Domain.Enums.UserRole.SystemAdmin
+        bool isAdmin = user.Role == Domain.Enums.UserRole.SystemAdmin;
+
+        // Derive effective action-permission values from role + explicit flags
+        bool canAttend = isAdmin
                        || user.Role == Domain.Enums.UserRole.AttendanceOnly
                        || user.CanTakeAttendance;
-        bool canEdit   = user.Role == Domain.Enums.UserRole.SystemAdmin
-                       || user.CanEditMembers;
-        bool canEvents = user.Role == Domain.Enums.UserRole.SystemAdmin
-                       || user.CanCreateEvents;
-        bool canTrips  = user.Role == Domain.Enums.UserRole.SystemAdmin
-                       || user.CanAccessTrips;
+        bool canEdit   = isAdmin || user.CanEditMembers;
+        bool canEvents = isAdmin || user.CanCreateEvents;
+        bool canTrips  = isAdmin || user.CanAccessTrips;
+
+        // Page-access permissions — SystemAdmin always true; others use stored value
+        bool B(bool stored) => isAdmin || stored;
 
         var claims = new[]
         {
@@ -41,10 +43,21 @@ public class JwtService : IJwtService
             new Claim(ClaimTypes.Role,  user.Role.ToString()),
             new Claim("groupId",           user.GroupId?.ToString() ?? string.Empty),
             new Claim("troopId",           user.TroopId?.ToString() ?? string.Empty),
+            // Action permissions
             new Claim("canTakeAttendance", canAttend.ToString().ToLower()),
             new Claim("canEditMembers",    canEdit.ToString().ToLower()),
             new Claim("canCreateEvents",   canEvents.ToString().ToLower()),
-            new Claim("canAccessTrips",    canTrips.ToString().ToLower())
+            new Claim("canAccessTrips",    canTrips.ToString().ToLower()),
+            // Page-access permissions
+            new Claim("canAccessTroops",      B(user.CanAccessTroops).ToString().ToLower()),
+            new Claim("canAccessMembers",     B(user.CanAccessMembers).ToString().ToLower()),
+            new Claim("canAccessExcuses",     B(user.CanAccessExcuses).ToString().ToLower()),
+            new Claim("canAccessEvents",      B(user.CanAccessEvents).ToString().ToLower()),
+            new Claim("canAccessAttendance",  B(user.CanAccessAttendance).ToString().ToLower()),
+            new Claim("canAccessPoints",      B(user.CanAccessPoints).ToString().ToLower()),
+            new Claim("canAccessLeaderboard", B(user.CanAccessLeaderboard).ToString().ToLower()),
+            new Claim("canAccessExamScores",  B(user.CanAccessExamScores).ToString().ToLower()),
+            new Claim("canAccessReports",     B(user.CanAccessReports).ToString().ToLower()),
         };
 
         var token = new JwtSecurityToken(

@@ -69,7 +69,18 @@ public class UserManagementService : IUserManagementService
             IsActive          = true,
             CanTakeAttendance = canAttend,
             CanEditMembers    = canEdit,
-            CanCreateEvents   = canEvents
+            CanCreateEvents   = canEvents,
+            CanAccessTrips    = dto.CanAccessTrips,
+            // Page-access permissions
+            CanAccessTroops      = dto.CanAccessTroops,
+            CanAccessMembers     = dto.CanAccessMembers,
+            CanAccessExcuses     = dto.CanAccessExcuses,
+            CanAccessEvents      = dto.CanAccessEvents,
+            CanAccessAttendance  = dto.CanAccessAttendance,
+            CanAccessPoints      = dto.CanAccessPoints,
+            CanAccessLeaderboard = dto.CanAccessLeaderboard,
+            CanAccessExamScores  = dto.CanAccessExamScores,
+            CanAccessReports     = dto.CanAccessReports
         };
 
         await _uow.Users.AddAsync(user);
@@ -91,6 +102,16 @@ public class UserManagementService : IUserManagementService
         user.CanEditMembers    = dto.CanEditMembers;
         user.CanCreateEvents   = dto.CanCreateEvents;
         user.CanAccessTrips    = dto.CanAccessTrips;
+        // Page-access permissions
+        user.CanAccessTroops      = dto.CanAccessTroops;
+        user.CanAccessMembers     = dto.CanAccessMembers;
+        user.CanAccessExcuses     = dto.CanAccessExcuses;
+        user.CanAccessEvents      = dto.CanAccessEvents;
+        user.CanAccessAttendance  = dto.CanAccessAttendance;
+        user.CanAccessPoints      = dto.CanAccessPoints;
+        user.CanAccessLeaderboard = dto.CanAccessLeaderboard;
+        user.CanAccessExamScores  = dto.CanAccessExamScores;
+        user.CanAccessReports     = dto.CanAccessReports;
         user.UpdatedAt         = DateTime.UtcNow;
 
         _uow.Users.Update(user);
@@ -171,6 +192,16 @@ public class UserManagementService : IUserManagementService
         CanEditMembers    = u.CanEditMembers,
         CanCreateEvents   = u.CanCreateEvents,
         CanAccessTrips    = u.CanAccessTrips,
+        // Page-access permissions
+        CanAccessTroops      = u.CanAccessTroops,
+        CanAccessMembers     = u.CanAccessMembers,
+        CanAccessExcuses     = u.CanAccessExcuses,
+        CanAccessEvents      = u.CanAccessEvents,
+        CanAccessAttendance  = u.CanAccessAttendance,
+        CanAccessPoints      = u.CanAccessPoints,
+        CanAccessLeaderboard = u.CanAccessLeaderboard,
+        CanAccessExamScores  = u.CanAccessExamScores,
+        CanAccessReports     = u.CanAccessReports,
         CreatedAt         = u.CreatedAt
     };
 }

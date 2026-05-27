@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 using ScoutsAttendance.Application.Common;
 using ScoutsAttendance.Application.DTOs.Members;
 using ScoutsAttendance.Application.DTOs.Transfers;
@@ -54,6 +55,39 @@ public class MembersController : ControllerBase
     {
         var result = await _service.GetAllAsync(groupId, troopId, page, pageSize, search, academicYear, region, hasNeckerchief, unassigned);
         return Ok(ApiResponse<PagedResult<MemberDto>>.Ok(result));
+    }
+
+    /// <summary>
+    /// Fast autocomplete search — returns only Id, FullName, TroopName.
+    /// Uses a single projected SQL query with no MemberPoints/Excuses joins.
+    /// Used by the booking form in trip-detail.
+    /// </summary>
+    [HttpGet("search")]
+    public async Task<ActionResult<ApiResponse<IEnumerable<MemberSearchDto>>>> Search(
+        [FromQuery] string? q       = null,
+        [FromQuery] Guid?   groupId = null,
+        [FromQuery] int     limit   = 15)
+    {
+        if (string.IsNullOrWhiteSpace(q) || q.Length < 2)
+            return Ok(ApiResponse<IEnumerable<MemberSearchDto>>.Ok([]));
+
+        var results = await _uow.Members.Query()
+            .Where(m =>
+                m.FirstName.Contains(q) ||
+                m.LastName.Contains(q)  ||
+                (m.FirstName + " " + m.LastName).Contains(q))
+            .Where(m => !groupId.HasValue || m.GroupId == groupId.Value)
+            .OrderBy(m => m.LastName).ThenBy(m => m.FirstName)
+            .Take(Math.Min(limit, 20))
+            .Select(m => new MemberSearchDto
+            {
+                Id        = m.Id,
+                FullName  = m.FirstName + " " + m.LastName,
+                TroopName = m.Troop != null ? m.Troop.Name : ""
+            })
+            .ToListAsync();
+
+        return Ok(ApiResponse<IEnumerable<MemberSearchDto>>.Ok(results));
     }
 
     [HttpGet("{id:guid}")]

@@ -75,6 +75,17 @@ public class UpdateMemberDto
     public string?   Notes          { get; set; }
 }
 
+/// <summary>
+/// Lightweight projection used by the autocomplete search in booking forms.
+/// No MemberPoints / Excuses loaded — single SQL query with projection.
+/// </summary>
+public class MemberSearchDto
+{
+    public Guid   Id        { get; set; }
+    public string FullName  { get; set; } = string.Empty;
+    public string TroopName { get; set; } = string.Empty;
+}
+
 /// <summary>Bulk update academic year / grade at start of year.</summary>
 public class BulkYearUpdateDto
 {

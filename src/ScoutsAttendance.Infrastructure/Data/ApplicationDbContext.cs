@@ -77,6 +77,11 @@ public class ApplicationDbContext : DbContext
             e.HasIndex(m => m.TroopId);
             e.HasIndex(m => m.QrCode).IsUnique();
             e.HasIndex(m => m.CustomId).IsUnique();
+            // Composite index for the fast-search endpoint (GroupId + names)
+            e.HasIndex(m => new { m.GroupId, m.FirstName, m.LastName })
+             .HasDatabaseName("IX_Members_GroupId_FirstName_LastName");
+            e.HasIndex(m => new { m.GroupId, m.LastName, m.FirstName })
+             .HasDatabaseName("IX_Members_GroupId_LastName_FirstName");
             e.Property(m => m.Gender).HasConversion<int>();
             e.Ignore(m => m.FullName);
             e.HasOne(m => m.Troop)

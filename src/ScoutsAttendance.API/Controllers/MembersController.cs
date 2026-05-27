@@ -59,8 +59,8 @@ public class MembersController : ControllerBase
 
     /// <summary>
     /// Fast autocomplete search — returns only Id, FullName, TroopName.
-    /// Uses a single projected SQL query with no MemberPoints/Excuses joins.
-    /// Used by the booking form in trip-detail.
+    /// Uses a single projected SQL query: no MemberPoints/Excuses joins, no COUNT.
+    /// Supports first name, last name (StartsWith → SARGable index) and CustomId.
     /// </summary>
     [HttpGet("search")]
     public async Task<ActionResult<ApiResponse<IEnumerable<MemberSearchDto>>>> Search(
@@ -71,12 +71,23 @@ public class MembersController : ControllerBase
         if (string.IsNullOrWhiteSpace(q) || q.Length < 2)
             return Ok(ApiResponse<IEnumerable<MemberSearchDto>>.Ok([]));
 
+        q = q.Trim();
+
+        // Parse numeric input to also match CustomId (e.g. "1000" → member 100001)
+        bool isNumeric = int.TryParse(q, out int customIdVal);
+
         var results = await _uow.Members.Query()
-            .Where(m =>
-                m.FirstName.Contains(q) ||
-                m.LastName.Contains(q)  ||
-                (m.FirstName + " " + m.LastName).Contains(q))
             .Where(m => !groupId.HasValue || m.GroupId == groupId.Value)
+            .Where(m =>
+                // StartsWith (LIKE 'q%') is SARGable — uses the composite index
+                m.FirstName.StartsWith(q) ||
+                m.LastName.StartsWith(q)  ||
+                // Also catch "First Last" typed together (search by last name portion)
+                m.FirstName.Contains(q)   ||
+                m.LastName.Contains(q)    ||
+                // CustomId exact / prefix match (e.g. "1000" finds 100001, 100003…)
+                (isNumeric && m.CustomId == customIdVal) ||
+                m.CustomId.ToString().StartsWith(q))
             .OrderBy(m => m.LastName).ThenBy(m => m.FirstName)
             .Take(Math.Min(limit, 20))
             .Select(m => new MemberSearchDto

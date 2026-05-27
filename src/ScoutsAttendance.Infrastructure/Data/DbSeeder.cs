@@ -166,6 +166,22 @@ public static class DbSeeder
             }
             catch { /* safe */ }
 
+            // Composite indexes for the fast member-search autocomplete endpoint.
+            // GroupId + FirstName + LastName lets the DB do an index range seek on GroupId
+            // and then filter on name prefix (LIKE 'q%') without a full table scan.
+            try
+            {
+                await context.Database.ExecuteSqlRawAsync(
+                    @"CREATE INDEX IF NOT EXISTS ""IX_Members_GroupId_FirstName_LastName"" ON ""Members"" (""GroupId"", ""FirstName"", ""LastName"")");
+            }
+            catch { /* safe */ }
+            try
+            {
+                await context.Database.ExecuteSqlRawAsync(
+                    @"CREATE INDEX IF NOT EXISTS ""IX_Members_GroupId_LastName_FirstName"" ON ""Members"" (""GroupId"", ""LastName"", ""FirstName"")");
+            }
+            catch { /* safe */ }
+
             // ProfileImageUrl — added in AddMemberProfileImageUrl migration
             try
             {

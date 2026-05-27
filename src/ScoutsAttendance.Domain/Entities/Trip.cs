@@ -17,7 +17,6 @@ public class Trip : BaseEntity
     public int?     PointValue    { get; set; }
     public TripStatus Status           { get; set; } = TripStatus.Open;
     public bool     AllowInstallments  { get; set; } = false;
-    public int?     NumberOfInstallments { get; set; }
     public string   CreatedBy          { get; set; } = string.Empty;
 
     // Navigation

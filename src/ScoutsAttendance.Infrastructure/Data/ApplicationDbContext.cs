@@ -329,7 +329,6 @@ public class ApplicationDbContext : DbContext
         mb.Entity<BookingPayment>(e =>
         {
             e.HasIndex(p => p.BookingId);
-            e.Property(p => p.AmountDue).HasColumnType("decimal(10,2)");
             e.Property(p => p.AmountPaid).HasColumnType("decimal(10,2)");
             e.HasOne(p => p.Booking)
                 .WithMany(b => b.Payments)

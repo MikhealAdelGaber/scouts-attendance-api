@@ -438,39 +438,54 @@ public static class DbSeeder
             try { await context.Database.ExecuteSqlRawAsync(@"CREATE UNIQUE INDEX IF NOT EXISTS ""UX_TripBookings_TripMember""   ON ""TripBookings"" (""TripId"", ""MemberId"") WHERE ""IsDeleted"" = false"); } catch { }
             try { await context.Database.ExecuteSqlRawAsync(@"CREATE UNIQUE INDEX IF NOT EXISTS ""UX_TripAttRec_TripMember""     ON ""TripAttendanceRecords"" (""TripId"", ""MemberId"") WHERE ""IsDeleted"" = false"); } catch { }
 
-            // ── Installment columns on Trips ──────────────────────────────────────
+            // ── AllowInstallments column on Trips ─────────────────────────────────
             try
             {
                 await context.Database.ExecuteSqlRawAsync(
                     @"ALTER TABLE ""Trips"" ADD COLUMN IF NOT EXISTS ""AllowInstallments"" BOOLEAN NOT NULL DEFAULT false");
             }
             catch { /* safe */ }
-            try
-            {
-                await context.Database.ExecuteSqlRawAsync(
-                    @"ALTER TABLE ""Trips"" ADD COLUMN IF NOT EXISTS ""NumberOfInstallments"" INTEGER");
-            }
-            catch { /* safe */ }
+            // NumberOfInstallments was removed from the model; column may exist in older DBs but
+            // is no longer read/written by EF — leave it in place to avoid data loss risk.
 
-            // ── BookingPayments table ─────────────────────────────────────────────
+            // ── BookingPayments table (flexible payment system) ───────────────────
+            // This creates the table fresh on new deployments.
+            // On existing deployments the table already exists with old columns —
+            // the IF NOT EXISTS guards keep it idempotent.
             try
             {
                 await context.Database.ExecuteSqlRawAsync(@"
                     CREATE TABLE IF NOT EXISTS ""BookingPayments"" (
-                        ""Id""                UUID          NOT NULL DEFAULT gen_random_uuid() PRIMARY KEY,
-                        ""BookingId""         UUID          NOT NULL,
-                        ""InstallmentNumber"" INTEGER       NOT NULL DEFAULT 1,
-                        ""AmountDue""         DECIMAL(10,2) NOT NULL DEFAULT 0,
-                        ""AmountPaid""        DECIMAL(10,2) NOT NULL DEFAULT 0,
-                        ""PaidAt""            TIMESTAMPTZ,
-                        ""Notes""             TEXT          NOT NULL DEFAULT '',
-                        ""CreatedAt""         TIMESTAMPTZ   NOT NULL DEFAULT now(),
-                        ""UpdatedAt""         TIMESTAMPTZ,
-                        ""IsDeleted""         BOOLEAN       NOT NULL DEFAULT false,
+                        ""Id""         UUID          NOT NULL DEFAULT gen_random_uuid() PRIMARY KEY,
+                        ""BookingId""  UUID          NOT NULL,
+                        ""AmountPaid"" DECIMAL(10,2) NOT NULL DEFAULT 0,
+                        ""PaidAt""     TIMESTAMPTZ   NOT NULL DEFAULT now(),
+                        ""Notes""      TEXT          NOT NULL DEFAULT '',
+                        ""CreatedAt""  TIMESTAMPTZ   NOT NULL DEFAULT now(),
+                        ""UpdatedAt""  TIMESTAMPTZ,
+                        ""IsDeleted""  BOOLEAN       NOT NULL DEFAULT false,
                         FOREIGN KEY (""BookingId"") REFERENCES ""TripBookings""(""Id"") ON DELETE CASCADE
                     )");
             }
             catch { /* already exists */ }
+
+            // For existing deployments that have the old schema (with InstallmentNumber / AmountDue),
+            // ensure the new columns exist — old columns are left as-is (unused).
+            try { await context.Database.ExecuteSqlRawAsync(@"ALTER TABLE ""BookingPayments"" ADD COLUMN IF NOT EXISTS ""AmountPaid"" DECIMAL(10,2) NOT NULL DEFAULT 0"); } catch { }
+            try
+            {
+                // PaidAt was previously nullable; make it non-nullable with a default for existing rows
+                await context.Database.ExecuteSqlRawAsync(@"ALTER TABLE ""BookingPayments"" ADD COLUMN IF NOT EXISTS ""PaidAt"" TIMESTAMPTZ NOT NULL DEFAULT now()");
+            }
+            catch { /* safe — column already exists (possibly nullable) */ }
+            // If PaidAt exists but is still nullable, update nulls and alter
+            try
+            {
+                await context.Database.ExecuteSqlRawAsync(@"UPDATE ""BookingPayments"" SET ""PaidAt"" = ""CreatedAt"" WHERE ""PaidAt"" IS NULL");
+                await context.Database.ExecuteSqlRawAsync(@"ALTER TABLE ""BookingPayments"" ALTER COLUMN ""PaidAt"" SET NOT NULL");
+                await context.Database.ExecuteSqlRawAsync(@"ALTER TABLE ""BookingPayments"" ALTER COLUMN ""PaidAt"" SET DEFAULT now()");
+            }
+            catch { /* safe — may already be NOT NULL */ }
 
             // Indexes for BookingPayments
             try { await context.Database.ExecuteSqlRawAsync(@"CREATE INDEX IF NOT EXISTS ""IX_BookingPayments_BookingId"" ON ""BookingPayments"" (""BookingId"")"); } catch { }

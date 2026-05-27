@@ -21,7 +21,6 @@ public class TripDto
     public TripStatus Status              { get; set; }
     public string    StatusName           { get; set; } = string.Empty;
     public bool      AllowInstallments    { get; set; }
-    public int?      NumberOfInstallments { get; set; }
     public string    CreatedBy            { get; set; } = string.Empty;
     public DateTime  CreatedAt            { get; set; }
 
@@ -43,7 +42,6 @@ public class CreateTripDto
     public bool     HasPoints            { get; set; } = false;
     public int?     PointValue           { get; set; }
     public bool     AllowInstallments    { get; set; } = false;
-    [Range(2, 24)] public int? NumberOfInstallments { get; set; }
     /// <summary>SystemAdmin only: override the group this trip belongs to.</summary>
     public Guid?    GroupId              { get; set; }
 }
@@ -61,7 +59,6 @@ public class UpdateTripDto
     public int?     PointValue           { get; set; }
     public TripStatus Status             { get; set; }
     public bool     AllowInstallments    { get; set; }
-    [Range(2, 24)] public int? NumberOfInstallments { get; set; }
     /// <summary>SystemAdmin only: re-assign this trip to a different group.</summary>
     public Guid?    GroupId              { get; set; }
 }
@@ -85,25 +82,28 @@ public class TripBookingDto
     public string        Notes              { get; set; } = string.Empty;
     public DateTime      CreatedAt          { get; set; }
 
-    // Installment summary (AllowInstallments = Payments.Any())
+    // Flexible payment summary
     public bool                    AllowInstallments { get; set; }
-    public int?                    InstallmentsPaid  { get; set; }
-    public int?                    InstallmentsTotal { get; set; }
+    public decimal                 TotalPaid         { get; set; }
     public List<BookingPaymentDto> Payments          { get; set; } = new();
 }
 
-// ─── Booking Payment (installment) ────────────────────────────────────────────
+// ─── Booking Payment ──────────────────────────────────────────────────────────
 
 public class BookingPaymentDto
 {
-    public Guid      Id                { get; set; }
-    public Guid      BookingId         { get; set; }
-    public int       InstallmentNumber { get; set; }
-    public decimal   AmountDue         { get; set; }
-    public decimal   AmountPaid        { get; set; }
-    public bool      IsPaid            { get; set; }
-    public DateTime? PaidAt            { get; set; }
-    public string    Notes             { get; set; } = string.Empty;
+    public Guid     Id         { get; set; }
+    public Guid     BookingId  { get; set; }
+    public decimal  AmountPaid { get; set; }
+    public DateTime PaidAt     { get; set; }
+    public string   Notes      { get; set; } = string.Empty;
+}
+
+public class AddPaymentDto
+{
+    [Range(0.01, double.MaxValue, ErrorMessage = "Amount must be greater than zero.")]
+    public decimal AmountPaid { get; set; }
+    public string  Notes      { get; set; } = string.Empty;
 }
 
 public class CreateBookingDto

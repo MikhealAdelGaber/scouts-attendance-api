@@ -229,10 +229,10 @@ public class TripsController : ControllerBase
             : Ok(ApiResponse<TripBookingDto>.Ok(result, "Payment status updated"));
     }
 
-    // ─── Installment payments ─────────────────────────────────────────────────
+    // ─── Flexible payments ────────────────────────────────────────────────────
 
     /// <summary>
-    /// Get all installment payment records for a specific booking.
+    /// Get all payment records for a specific booking.
     /// All roles with CanAccessTrips.
     /// </summary>
     [HttpGet("{tripId:guid}/bookings/{bookingId:guid}/payments")]
@@ -250,11 +250,37 @@ public class TripsController : ControllerBase
     }
 
     /// <summary>
-    /// Toggle paid/unpaid for a single installment.
-    /// All roles with CanAccessTrips (GroupLeader + AttendanceOnly).
+    /// Record a new payment toward a booking.
+    /// Validates amount &gt; 0 and total would not exceed amountDue.
+    /// All roles with CanAccessTrips.
     /// </summary>
-    [HttpPut("{tripId:guid}/bookings/{bookingId:guid}/payments/{paymentId:guid}/mark-paid")]
-    public async Task<ActionResult<ApiResponse<BookingPaymentDto>>> MarkInstallmentPaid(
+    [HttpPost("{tripId:guid}/bookings/{bookingId:guid}/payments")]
+    public async Task<ActionResult<ApiResponse<BookingPaymentDto>>> AddPayment(
+        Guid tripId, Guid bookingId, [FromBody] AddPaymentDto dto)
+    {
+        var deny = RequireTripsPermission();
+        if (deny is not null) return deny;
+
+        var scope = await RequireTripGroupAccessAsync(tripId);
+        if (scope is not null) return scope;
+
+        try
+        {
+            var result = await _trips.AddPaymentAsync(tripId, bookingId, dto);
+            return Ok(ApiResponse<BookingPaymentDto>.Ok(result, "Payment recorded"));
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(ApiResponse<BookingPaymentDto>.Fail(ex.Message));
+        }
+    }
+
+    /// <summary>
+    /// Delete (soft) a payment record.
+    /// All roles with CanAccessTrips.
+    /// </summary>
+    [HttpDelete("{tripId:guid}/bookings/{bookingId:guid}/payments/{paymentId:guid}")]
+    public async Task<ActionResult<ApiResponse>> DeletePayment(
         Guid tripId, Guid bookingId, Guid paymentId)
     {
         var deny = RequireTripsPermission();
@@ -263,10 +289,10 @@ public class TripsController : ControllerBase
         var scope = await RequireTripGroupAccessAsync(tripId);
         if (scope is not null) return scope;
 
-        var result = await _trips.MarkInstallmentPaidAsync(paymentId);
-        return result is null
-            ? NotFound(ApiResponse<BookingPaymentDto>.Fail("Payment not found"))
-            : Ok(ApiResponse<BookingPaymentDto>.Ok(result, "Installment payment status updated"));
+        var ok = await _trips.DeletePaymentAsync(tripId, paymentId);
+        return ok
+            ? Ok(ApiResponse.Ok("Payment deleted"))
+            : NotFound(ApiResponse.Fail("Payment not found"));
     }
 
     // ─── Attendance ───────────────────────────────────────────────────────────

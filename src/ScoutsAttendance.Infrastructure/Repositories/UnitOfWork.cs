@@ -32,6 +32,7 @@ public class UnitOfWork : IUnitOfWork
         Trips                 = new GenericRepository<Trip>(context);
         TripBookings          = new GenericRepository<TripBooking>(context);
         TripAttendanceRecords = new GenericRepository<TripAttendanceRecord>(context);
+        BookingPayments       = new GenericRepository<BookingPayment>(context);
     }
 
     public IRepository<User>             Users             { get; }
@@ -54,6 +55,7 @@ public class UnitOfWork : IUnitOfWork
     public IRepository<Trip>                 Trips                 { get; }
     public IRepository<TripBooking>          TripBookings          { get; }
     public IRepository<TripAttendanceRecord> TripAttendanceRecords { get; }
+    public IRepository<BookingPayment>       BookingPayments       { get; }
 
     public async Task<int> SaveChangesAsync() => await _context.SaveChangesAsync();
 

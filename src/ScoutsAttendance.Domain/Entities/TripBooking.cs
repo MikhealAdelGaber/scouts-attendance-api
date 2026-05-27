@@ -14,6 +14,7 @@ public class TripBooking : BaseEntity
     public string        Notes         { get; set; } = string.Empty;
 
     // Navigation
-    public Trip?   Trip   { get; set; }
-    public Member? Member { get; set; }
+    public Trip?   Trip     { get; set; }
+    public Member? Member   { get; set; }
+    public ICollection<BookingPayment> Payments { get; set; } = new List<BookingPayment>();
 }

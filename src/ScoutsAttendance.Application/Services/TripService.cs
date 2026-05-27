@@ -24,6 +24,10 @@ public interface ITripService
     // ── Attendance ────────────────────────────────────────────────────────────
     Task<IEnumerable<TripAttendanceDto>> GetAttendanceAsync(Guid tripId);
     Task                                 SaveAttendanceAsync(Guid tripId, SaveTripAttendanceDto dto);
+
+    // ── Installment payments ──────────────────────────────────────────────────
+    Task<IEnumerable<BookingPaymentDto>> GetPaymentsAsync(Guid bookingId);
+    Task<BookingPaymentDto?>             MarkInstallmentPaidAsync(Guid paymentId);
 }
 
 public class TripService : ITripService
@@ -63,18 +67,20 @@ public class TripService : ITripService
     {
         var trip = new Trip
         {
-            Name         = dto.Name.Trim(),
-            Description  = (dto.Description ?? string.Empty).Trim(),
-            TripDate     = DateTime.SpecifyKind(dto.TripDate, DateTimeKind.Utc),
-            Location     = dto.Location.Trim(),
-            Price        = dto.Price,
-            SiblingPrice = dto.SiblingPrice,
-            MaxCapacity  = dto.MaxCapacity,
-            GroupId      = groupId,
-            HasPoints    = dto.HasPoints,
-            PointValue   = dto.HasPoints ? dto.PointValue : null,
-            Status       = TripStatus.Open,
-            CreatedBy    = createdBy
+            Name                 = dto.Name.Trim(),
+            Description          = (dto.Description ?? string.Empty).Trim(),
+            TripDate             = DateTime.SpecifyKind(dto.TripDate, DateTimeKind.Utc),
+            Location             = dto.Location.Trim(),
+            Price                = dto.Price,
+            SiblingPrice         = dto.SiblingPrice,
+            MaxCapacity          = dto.MaxCapacity,
+            GroupId              = groupId,
+            HasPoints            = dto.HasPoints,
+            PointValue           = dto.HasPoints ? dto.PointValue : null,
+            Status               = TripStatus.Open,
+            AllowInstallments    = dto.AllowInstallments,
+            NumberOfInstallments = dto.AllowInstallments ? dto.NumberOfInstallments : null,
+            CreatedBy            = createdBy
         };
 
         await _uow.Trips.AddAsync(trip);
@@ -88,16 +94,18 @@ public class TripService : ITripService
         if (trip is null || trip.IsDeleted) return null;
         if (!isAdmin && trip.GroupId != callerGroupId) return null;
 
-        trip.Name         = dto.Name.Trim();
-        trip.Description  = (dto.Description ?? string.Empty).Trim();
-        trip.TripDate     = DateTime.SpecifyKind(dto.TripDate, DateTimeKind.Utc);
-        trip.Location     = dto.Location.Trim();
-        trip.Price        = dto.Price;
-        trip.SiblingPrice = dto.SiblingPrice;
-        trip.MaxCapacity  = dto.MaxCapacity;
-        trip.HasPoints    = dto.HasPoints;
-        trip.PointValue   = dto.HasPoints ? dto.PointValue : null;
-        trip.Status       = dto.Status;
+        trip.Name                 = dto.Name.Trim();
+        trip.Description          = (dto.Description ?? string.Empty).Trim();
+        trip.TripDate             = DateTime.SpecifyKind(dto.TripDate, DateTimeKind.Utc);
+        trip.Location             = dto.Location.Trim();
+        trip.Price                = dto.Price;
+        trip.SiblingPrice         = dto.SiblingPrice;
+        trip.MaxCapacity          = dto.MaxCapacity;
+        trip.HasPoints            = dto.HasPoints;
+        trip.PointValue           = dto.HasPoints ? dto.PointValue : null;
+        trip.Status               = dto.Status;
+        trip.AllowInstallments    = dto.AllowInstallments;
+        trip.NumberOfInstallments = dto.AllowInstallments ? dto.NumberOfInstallments : null;
         // SystemAdmin can re-assign to a different group via the DTO
         if (dto.GroupId.HasValue && dto.GroupId.Value != Guid.Empty)
             trip.GroupId  = dto.GroupId.Value;
@@ -127,6 +135,7 @@ public class TripService : ITripService
     {
         var bookings = await _uow.TripBookings.Query()
             .Include(b => b.Member).ThenInclude(m => m!.Troop)
+            .Include(b => b.Payments)
             .Where(b => b.TripId == tripId && !b.IsDeleted)
             .OrderBy(b => b.BookingStatus)
             .ThenBy(b => b.CreatedAt)
@@ -176,10 +185,32 @@ public class TripService : ITripService
             _uow.Trips.Update(trip);
         }
 
+        // Create installment payment records when installments are enabled
+        if (trip.AllowInstallments && trip.NumberOfInstallments.HasValue
+            && trip.NumberOfInstallments.Value >= 2)
+        {
+            int    n                   = trip.NumberOfInstallments.Value;
+            decimal perInstallment     = Math.Round(booking.AmountDue / n, 2);
+            decimal lastInstallment    = booking.AmountDue - perInstallment * (n - 1);
+
+            for (int i = 1; i <= n; i++)
+            {
+                await _uow.BookingPayments.AddAsync(new BookingPayment
+                {
+                    BookingId         = booking.Id,
+                    InstallmentNumber = i,
+                    AmountDue         = (i == n) ? lastInstallment : perInstallment,
+                    AmountPaid        = 0m,
+                    Notes             = ""
+                });
+            }
+        }
+
         await _uow.SaveChangesAsync();
 
         var saved = await _uow.TripBookings.Query()
             .Include(b => b.Member).ThenInclude(m => m!.Troop)
+            .Include(b => b.Payments)
             .FirstAsync(b => b.Id == booking.Id);
 
         return MapBooking(saved);
@@ -233,6 +264,7 @@ public class TripService : ITripService
     {
         var booking = await _uow.TripBookings.Query()
             .Include(b => b.Member).ThenInclude(m => m!.Troop)
+            .Include(b => b.Payments)
             .FirstOrDefaultAsync(b => b.Id == bookingId && !b.IsDeleted);
 
         if (booking is null) return null;
@@ -242,6 +274,42 @@ public class TripService : ITripService
         _uow.TripBookings.Update(booking);
         await _uow.SaveChangesAsync();
         return MapBooking(booking);
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Installment Payments
+    // ─────────────────────────────────────────────────────────────────────────
+
+    public async Task<IEnumerable<BookingPaymentDto>> GetPaymentsAsync(Guid bookingId)
+    {
+        var payments = await _uow.BookingPayments.Query()
+            .Where(p => p.BookingId == bookingId && !p.IsDeleted)
+            .OrderBy(p => p.InstallmentNumber)
+            .ToListAsync();
+        return payments.Select(MapPayment);
+    }
+
+    public async Task<BookingPaymentDto?> MarkInstallmentPaidAsync(Guid paymentId)
+    {
+        var payment = await _uow.BookingPayments.Query()
+            .FirstOrDefaultAsync(p => p.Id == paymentId && !p.IsDeleted);
+
+        if (payment is null) return null;
+
+        if (payment.PaidAt.HasValue)
+        {
+            payment.PaidAt     = null;
+            payment.AmountPaid = 0m;
+        }
+        else
+        {
+            payment.PaidAt     = DateTime.UtcNow;
+            payment.AmountPaid = payment.AmountDue;
+        }
+        payment.UpdatedAt = DateTime.UtcNow;
+        _uow.BookingPayments.Update(payment);
+        await _uow.SaveChangesAsync();
+        return MapPayment(payment);
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -341,43 +409,70 @@ public class TripService : ITripService
 
     private static TripDto MapTrip(Trip t) => new()
     {
-        Id             = t.Id,
-        Name           = t.Name,
-        Description    = t.Description,
-        TripDate       = t.TripDate,
-        Location       = t.Location,
-        Price          = t.Price,
-        SiblingPrice   = t.SiblingPrice,
-        MaxCapacity    = t.MaxCapacity,
-        GroupId        = t.GroupId,
-        HasPoints      = t.HasPoints,
-        PointValue     = t.PointValue,
-        Status         = t.Status,
-        StatusName     = t.Status.ToString(),
-        CreatedBy      = t.CreatedBy,
-        CreatedAt      = t.CreatedAt,
-        ConfirmedCount = t.Bookings.Count(b => !b.IsDeleted && b.BookingStatus == BookingStatus.Confirmed),
-        WaitingCount   = t.Bookings.Count(b => !b.IsDeleted && b.BookingStatus == BookingStatus.Waiting),
-        TotalCollected = t.Bookings
-            .Where(b => !b.IsDeleted && b.BookingStatus == BookingStatus.Confirmed)
+        Id                   = t.Id,
+        Name                 = t.Name,
+        Description          = t.Description,
+        TripDate             = t.TripDate,
+        Location             = t.Location,
+        Price                = t.Price,
+        SiblingPrice         = t.SiblingPrice,
+        MaxCapacity          = t.MaxCapacity,
+        GroupId              = t.GroupId,
+        HasPoints            = t.HasPoints,
+        PointValue           = t.PointValue,
+        Status               = t.Status,
+        StatusName           = t.Status.ToString(),
+        AllowInstallments    = t.AllowInstallments,
+        NumberOfInstallments = t.NumberOfInstallments,
+        CreatedBy            = t.CreatedBy,
+        CreatedAt            = t.CreatedAt,
+        ConfirmedCount       = t.Bookings.Count(b => !b.IsDeleted && b.BookingStatus == BookingStatus.Confirmed),
+        WaitingCount         = t.Bookings.Count(b => !b.IsDeleted && b.BookingStatus == BookingStatus.Waiting),
+        TotalCollected       = t.Bookings
+            .Where(b => !b.IsDeleted && b.BookingStatus == BookingStatus.Confirmed && b.PaidAt.HasValue)
             .Sum(b => b.AmountDue)
     };
 
-    private static TripBookingDto MapBooking(TripBooking b) => new()
+    private static TripBookingDto MapBooking(TripBooking b)
     {
-        Id             = b.Id,
-        TripId         = b.TripId,
-        MemberId       = b.MemberId,
-        MemberName     = b.Member?.FullName ?? "",
-        TroopName      = b.Member?.Troop?.Name ?? "",
-        MemberCustomId = b.Member?.CustomId ?? 0,
-        BookingStatus  = b.BookingStatus,
-        StatusName     = b.BookingStatus.ToString(),
-        IsSibling      = b.IsSibling,
-        AmountDue      = b.AmountDue,
-        IsPaid         = b.PaidAt.HasValue,
-        PaidAt         = b.PaidAt,
-        Notes          = b.Notes,
-        CreatedAt      = b.CreatedAt
+        bool hasInstallments = b.Payments.Any();
+        var  payments        = b.Payments.OrderBy(p => p.InstallmentNumber).Select(MapPayment).ToList();
+        int  paidCount       = payments.Count(p => p.IsPaid);
+
+        return new TripBookingDto
+        {
+            Id                = b.Id,
+            TripId            = b.TripId,
+            MemberId          = b.MemberId,
+            MemberName        = b.Member?.FullName ?? "",
+            TroopName         = b.Member?.Troop?.Name ?? "",
+            MemberCustomId    = b.Member?.CustomId ?? 0,
+            BookingStatus     = b.BookingStatus,
+            StatusName        = b.BookingStatus.ToString(),
+            IsSibling         = b.IsSibling,
+            AmountDue         = b.AmountDue,
+            IsPaid            = hasInstallments
+                                    ? (payments.Count > 0 && paidCount == payments.Count)
+                                    : b.PaidAt.HasValue,
+            PaidAt            = b.PaidAt,
+            Notes             = b.Notes,
+            CreatedAt         = b.CreatedAt,
+            AllowInstallments = hasInstallments,
+            InstallmentsTotal = hasInstallments ? payments.Count : null,
+            InstallmentsPaid  = hasInstallments ? paidCount       : null,
+            Payments          = payments
+        };
+    }
+
+    private static BookingPaymentDto MapPayment(BookingPayment p) => new()
+    {
+        Id                = p.Id,
+        BookingId         = p.BookingId,
+        InstallmentNumber = p.InstallmentNumber,
+        AmountDue         = p.AmountDue,
+        AmountPaid        = p.AmountPaid,
+        IsPaid            = p.PaidAt.HasValue,
+        PaidAt            = p.PaidAt,
+        Notes             = p.Notes
     };
 }

@@ -27,6 +27,7 @@ public class ApplicationDbContext : DbContext
     public DbSet<Trip>                 Trips                 => Set<Trip>();
     public DbSet<TripBooking>          TripBookings          => Set<TripBooking>();
     public DbSet<TripAttendanceRecord> TripAttendanceRecords => Set<TripAttendanceRecord>();
+    public DbSet<BookingPayment>       BookingPayments       => Set<BookingPayment>();
 
     protected override void OnModelCreating(ModelBuilder mb)
     {
@@ -323,5 +324,18 @@ public class ApplicationDbContext : DbContext
                 .OnDelete(DeleteBehavior.Restrict);
         });
         mb.Entity<TripAttendanceRecord>().HasQueryFilter(e => !e.IsDeleted);
+
+        // ─── BookingPayment ────────────────────────────────────────────────────────
+        mb.Entity<BookingPayment>(e =>
+        {
+            e.HasIndex(p => p.BookingId);
+            e.Property(p => p.AmountDue).HasColumnType("decimal(10,2)");
+            e.Property(p => p.AmountPaid).HasColumnType("decimal(10,2)");
+            e.HasOne(p => p.Booking)
+                .WithMany(b => b.Payments)
+                .HasForeignKey(p => p.BookingId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+        mb.Entity<BookingPayment>().HasQueryFilter(e => !e.IsDeleted);
     }
 }

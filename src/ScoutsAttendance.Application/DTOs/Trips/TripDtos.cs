@@ -7,21 +7,23 @@ namespace ScoutsAttendance.Application.DTOs.Trips;
 
 public class TripDto
 {
-    public Guid      Id             { get; set; }
-    public string    Name           { get; set; } = string.Empty;
-    public string    Description    { get; set; } = string.Empty;
-    public DateTime  TripDate       { get; set; }
-    public string    Location       { get; set; } = string.Empty;
-    public decimal   Price          { get; set; }
-    public decimal   SiblingPrice   { get; set; }
-    public int?      MaxCapacity    { get; set; }
-    public Guid      GroupId        { get; set; }
-    public bool      HasPoints      { get; set; }
-    public int?      PointValue     { get; set; }
-    public TripStatus Status        { get; set; }
-    public string    StatusName     { get; set; } = string.Empty;
-    public string    CreatedBy      { get; set; } = string.Empty;
-    public DateTime  CreatedAt      { get; set; }
+    public Guid      Id                   { get; set; }
+    public string    Name                 { get; set; } = string.Empty;
+    public string    Description          { get; set; } = string.Empty;
+    public DateTime  TripDate             { get; set; }
+    public string    Location             { get; set; } = string.Empty;
+    public decimal   Price                { get; set; }
+    public decimal   SiblingPrice         { get; set; }
+    public int?      MaxCapacity          { get; set; }
+    public Guid      GroupId              { get; set; }
+    public bool      HasPoints            { get; set; }
+    public int?      PointValue           { get; set; }
+    public TripStatus Status              { get; set; }
+    public string    StatusName           { get; set; } = string.Empty;
+    public bool      AllowInstallments    { get; set; }
+    public int?      NumberOfInstallments { get; set; }
+    public string    CreatedBy            { get; set; } = string.Empty;
+    public DateTime  CreatedAt            { get; set; }
 
     // Computed
     public int     ConfirmedCount   { get; set; }
@@ -32,52 +34,76 @@ public class TripDto
 public class CreateTripDto
 {
     [Required, MaxLength(200)] public string Name        { get; set; } = string.Empty;
-    public string   Description   { get; set; } = string.Empty;
-    [Required] public DateTime TripDate     { get; set; }
-    public string   Location      { get; set; } = string.Empty;
+    public string   Description          { get; set; } = string.Empty;
+    [Required] public DateTime TripDate  { get; set; }
+    public string   Location             { get; set; } = string.Empty;
     [Range(0, double.MaxValue)] public decimal Price        { get; set; }
     [Range(0, double.MaxValue)] public decimal SiblingPrice { get; set; }
-    public int?     MaxCapacity   { get; set; }
-    public bool     HasPoints     { get; set; } = false;
-    public int?     PointValue    { get; set; }
+    public int?     MaxCapacity          { get; set; }
+    public bool     HasPoints            { get; set; } = false;
+    public int?     PointValue           { get; set; }
+    public bool     AllowInstallments    { get; set; } = false;
+    [Range(2, 24)] public int? NumberOfInstallments { get; set; }
     /// <summary>SystemAdmin only: override the group this trip belongs to.</summary>
-    public Guid?    GroupId       { get; set; }
+    public Guid?    GroupId              { get; set; }
 }
 
 public class UpdateTripDto
 {
     [Required, MaxLength(200)] public string Name        { get; set; } = string.Empty;
-    public string   Description   { get; set; } = string.Empty;
-    [Required] public DateTime TripDate     { get; set; }
-    public string   Location      { get; set; } = string.Empty;
+    public string   Description          { get; set; } = string.Empty;
+    [Required] public DateTime TripDate  { get; set; }
+    public string   Location             { get; set; } = string.Empty;
     [Range(0, double.MaxValue)] public decimal Price        { get; set; }
     [Range(0, double.MaxValue)] public decimal SiblingPrice { get; set; }
-    public int?     MaxCapacity   { get; set; }
-    public bool     HasPoints     { get; set; }
-    public int?     PointValue    { get; set; }
-    public TripStatus Status      { get; set; }
+    public int?     MaxCapacity          { get; set; }
+    public bool     HasPoints            { get; set; }
+    public int?     PointValue           { get; set; }
+    public TripStatus Status             { get; set; }
+    public bool     AllowInstallments    { get; set; }
+    [Range(2, 24)] public int? NumberOfInstallments { get; set; }
     /// <summary>SystemAdmin only: re-assign this trip to a different group.</summary>
-    public Guid?    GroupId       { get; set; }
+    public Guid?    GroupId              { get; set; }
 }
 
 // ─── Booking ──────────────────────────────────────────────────────────────────
 
 public class TripBookingDto
 {
-    public Guid          Id             { get; set; }
-    public Guid          TripId         { get; set; }
-    public Guid          MemberId       { get; set; }
-    public string        MemberName     { get; set; } = string.Empty;
-    public string        TroopName      { get; set; } = string.Empty;
-    public int           MemberCustomId { get; set; }
-    public BookingStatus BookingStatus  { get; set; }
-    public string        StatusName     { get; set; } = string.Empty;
-    public bool          IsSibling      { get; set; }
-    public decimal       AmountDue      { get; set; }
-    public bool          IsPaid         { get; set; }
-    public DateTime?     PaidAt         { get; set; }
-    public string        Notes          { get; set; } = string.Empty;
-    public DateTime      CreatedAt      { get; set; }
+    public Guid          Id                 { get; set; }
+    public Guid          TripId             { get; set; }
+    public Guid          MemberId           { get; set; }
+    public string        MemberName         { get; set; } = string.Empty;
+    public string        TroopName          { get; set; } = string.Empty;
+    public int           MemberCustomId     { get; set; }
+    public BookingStatus BookingStatus      { get; set; }
+    public string        StatusName         { get; set; } = string.Empty;
+    public bool          IsSibling          { get; set; }
+    public decimal       AmountDue          { get; set; }
+    public bool          IsPaid             { get; set; }
+    public DateTime?     PaidAt             { get; set; }
+    public string        Notes              { get; set; } = string.Empty;
+    public DateTime      CreatedAt          { get; set; }
+
+    // Installment summary (AllowInstallments = Payments.Any())
+    public bool                    AllowInstallments { get; set; }
+    public int?                    InstallmentsPaid  { get; set; }
+    public int?                    InstallmentsTotal { get; set; }
+    public List<BookingPaymentDto> Payments          { get; set; } = new();
+}
+
+// ─── Booking Payment (installment) ────────────────────────────────────────────
+
+public class BookingPaymentDto
+{
+    public Guid      Id                { get; set; }
+    public Guid      BookingId         { get; set; }
+    public int       InstallmentNumber { get; set; }
+    public decimal   AmountDue         { get; set; }
+    public decimal   AmountPaid        { get; set; }
+    public bool      IsPaid            { get; set; }
+    public DateTime? PaidAt            { get; set; }
+    public string    Notes             { get; set; } = string.Empty;
 }
 
 public class CreateBookingDto

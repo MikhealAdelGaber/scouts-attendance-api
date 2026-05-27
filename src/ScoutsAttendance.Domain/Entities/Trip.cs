@@ -15,8 +15,10 @@ public class Trip : BaseEntity
     public Guid     GroupId       { get; set; }
     public bool     HasPoints     { get; set; } = false;
     public int?     PointValue    { get; set; }
-    public TripStatus Status      { get; set; } = TripStatus.Open;
-    public string   CreatedBy     { get; set; } = string.Empty;
+    public TripStatus Status           { get; set; } = TripStatus.Open;
+    public bool     AllowInstallments  { get; set; } = false;
+    public int?     NumberOfInstallments { get; set; }
+    public string   CreatedBy          { get; set; } = string.Empty;
 
     // Navigation
     public Group?  Group    { get; set; }

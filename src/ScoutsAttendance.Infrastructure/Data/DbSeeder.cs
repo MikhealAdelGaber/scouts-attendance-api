@@ -437,6 +437,43 @@ public static class DbSeeder
             // Unique constraint (TripId + MemberId) — safe if already exists
             try { await context.Database.ExecuteSqlRawAsync(@"CREATE UNIQUE INDEX IF NOT EXISTS ""UX_TripBookings_TripMember""   ON ""TripBookings"" (""TripId"", ""MemberId"") WHERE ""IsDeleted"" = false"); } catch { }
             try { await context.Database.ExecuteSqlRawAsync(@"CREATE UNIQUE INDEX IF NOT EXISTS ""UX_TripAttRec_TripMember""     ON ""TripAttendanceRecords"" (""TripId"", ""MemberId"") WHERE ""IsDeleted"" = false"); } catch { }
+
+            // ── Installment columns on Trips ──────────────────────────────────────
+            try
+            {
+                await context.Database.ExecuteSqlRawAsync(
+                    @"ALTER TABLE ""Trips"" ADD COLUMN IF NOT EXISTS ""AllowInstallments"" BOOLEAN NOT NULL DEFAULT false");
+            }
+            catch { /* safe */ }
+            try
+            {
+                await context.Database.ExecuteSqlRawAsync(
+                    @"ALTER TABLE ""Trips"" ADD COLUMN IF NOT EXISTS ""NumberOfInstallments"" INTEGER");
+            }
+            catch { /* safe */ }
+
+            // ── BookingPayments table ─────────────────────────────────────────────
+            try
+            {
+                await context.Database.ExecuteSqlRawAsync(@"
+                    CREATE TABLE IF NOT EXISTS ""BookingPayments"" (
+                        ""Id""                UUID          NOT NULL DEFAULT gen_random_uuid() PRIMARY KEY,
+                        ""BookingId""         UUID          NOT NULL,
+                        ""InstallmentNumber"" INTEGER       NOT NULL DEFAULT 1,
+                        ""AmountDue""         DECIMAL(10,2) NOT NULL DEFAULT 0,
+                        ""AmountPaid""        DECIMAL(10,2) NOT NULL DEFAULT 0,
+                        ""PaidAt""            TIMESTAMPTZ,
+                        ""Notes""             TEXT          NOT NULL DEFAULT '',
+                        ""CreatedAt""         TIMESTAMPTZ   NOT NULL DEFAULT now(),
+                        ""UpdatedAt""         TIMESTAMPTZ,
+                        ""IsDeleted""         BOOLEAN       NOT NULL DEFAULT false,
+                        FOREIGN KEY (""BookingId"") REFERENCES ""TripBookings""(""Id"") ON DELETE CASCADE
+                    )");
+            }
+            catch { /* already exists */ }
+
+            // Indexes for BookingPayments
+            try { await context.Database.ExecuteSqlRawAsync(@"CREATE INDEX IF NOT EXISTS ""IX_BookingPayments_BookingId"" ON ""BookingPayments"" (""BookingId"")"); } catch { }
         }
         else
         {

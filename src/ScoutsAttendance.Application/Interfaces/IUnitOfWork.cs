@@ -24,6 +24,7 @@ public interface IUnitOfWork : IDisposable
     IRepository<Trip>                 Trips                 { get; }
     IRepository<TripBooking>          TripBookings          { get; }
     IRepository<TripAttendanceRecord> TripAttendanceRecords { get; }
+    IRepository<BookingPayment>       BookingPayments       { get; }
 
     Task<int> SaveChangesAsync();
 

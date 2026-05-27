@@ -60,7 +60,7 @@ public class MembersController : ControllerBase
     /// <summary>
     /// Fast autocomplete search — returns only Id, FullName, TroopName.
     /// Uses a single projected SQL query: no MemberPoints/Excuses joins, no COUNT.
-    /// Supports first name, last name (StartsWith → SARGable index) and CustomId.
+    /// Supports first/last name (Contains) and CustomId prefix via integer division.
     /// </summary>
     [HttpGet("search")]
     public async Task<ActionResult<ApiResponse<IEnumerable<MemberSearchDto>>>> Search(
@@ -76,18 +76,21 @@ public class MembersController : ControllerBase
         // Parse numeric input to also match CustomId (e.g. "1000" → member 100001)
         bool isNumeric = int.TryParse(q, out int customIdVal);
 
+        // Integer-division prefix match — 100% reliable EF Core → SQL translation.
+        // CustomIds are 6 digits (100001…).  For query "1000" (len 4):
+        //   divisor = 10^(6-4) = 100  →  100001 / 100 = 1000  ✓
+        int divisor = (isNumeric && q.Length <= 6)
+            ? (int)Math.Pow(10, 6 - q.Length)
+            : 1;
+
         var results = await _uow.Members.Query()
             .Where(m => !groupId.HasValue || m.GroupId == groupId.Value)
             .Where(m =>
-                // StartsWith (LIKE 'q%') is SARGable — uses the composite index
-                m.FirstName.StartsWith(q) ||
-                m.LastName.StartsWith(q)  ||
-                // Also catch "First Last" typed together (search by last name portion)
-                m.FirstName.Contains(q)   ||
-                m.LastName.Contains(q)    ||
-                // CustomId exact / prefix match (e.g. "1000" finds 100001, 100003…)
-                (isNumeric && m.CustomId == customIdVal) ||
-                m.CustomId.ToString().StartsWith(q))
+                // Name search — Contains covers mid-name matches (LIKE '%q%')
+                m.FirstName.Contains(q) ||
+                m.LastName.Contains(q)  ||
+                // CustomId prefix via integer division (pure arithmetic, no ToString)
+                (isNumeric && m.CustomId / divisor == customIdVal))
             .OrderBy(m => m.LastName).ThenBy(m => m.FirstName)
             .Take(Math.Min(limit, 20))
             .Select(m => new MemberSearchDto

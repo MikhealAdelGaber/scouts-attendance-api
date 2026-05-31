@@ -7,6 +7,13 @@ namespace ScoutsAttendance.Application.Services;
 public interface IGroupService
 {
     Task<IEnumerable<GroupDto>> GetAllAsync();
+
+    /// <summary>
+    /// Returns ALL groups in the system, bypassing the per-user group scoping
+    /// that GetAllAsync() applies.  Used exclusively by the transfer-request dialog.
+    /// </summary>
+    Task<IEnumerable<GroupDto>> GetAllForTransferAsync();
+
     Task<GroupDto?> GetByIdAsync(Guid id);
     Task<GroupDto> CreateAsync(CreateGroupDto dto);
     Task<GroupDto?> UpdateAsync(Guid id, UpdateGroupDto dto);
@@ -105,6 +112,32 @@ public class GroupService : IGroupService
         _uow.Groups.Update(group);
         await _uow.SaveChangesAsync();
         return await GetByIdAsync(id);
+    }
+
+    public async Task<IEnumerable<GroupDto>> GetAllForTransferAsync()
+    {
+        var query = _uow.Groups.Query()
+            .Include(g => g.Leader)
+            .Include(g => g.Troops)
+            .Include(g => g.Members)
+            .Where(g => !g.IsDeleted);
+
+        // Exclude the caller's own group — you can't transfer a member to the group they're already in.
+        if (_currentUser.GroupId.HasValue)
+            query = query.Where(g => g.Id != _currentUser.GroupId.Value);
+
+        var groups = await query.OrderBy(g => g.Name).ToListAsync();
+        return groups.Select(g => new GroupDto
+        {
+            Id          = g.Id,
+            Name        = g.Name,
+            Description = g.Description,
+            LeaderId    = g.LeaderId,
+            LeaderName  = g.Leader?.Username ?? string.Empty,
+            TroopCount  = g.Troops.Count(t => !t.IsDeleted),
+            MemberCount = g.Members.Count(m => !m.IsDeleted),
+            CreatedAt   = g.CreatedAt
+        });
     }
 
     public async Task<bool> DeleteAsync(Guid id)

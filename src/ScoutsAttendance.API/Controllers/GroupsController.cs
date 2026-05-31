@@ -22,6 +22,20 @@ public class GroupsController : ControllerBase
         return Ok(ApiResponse<IEnumerable<GroupDto>>.Ok(result));
     }
 
+    /// <summary>
+    /// GET /api/groups/all-for-transfer — returns ALL groups in the system, bypassing
+    /// the per-user group scoping that GetAll() applies.  Used exclusively by the
+    /// "Request Transfer" dialog so a GroupLeader can pick a destination group they
+    /// don't belong to.
+    /// </summary>
+    [HttpGet("all-for-transfer")]
+    [Authorize(Roles = "SystemAdmin,GroupLeader")]
+    public async Task<ActionResult<ApiResponse<IEnumerable<GroupDto>>>> GetAllForTransfer()
+    {
+        var result = await _service.GetAllForTransferAsync();
+        return Ok(ApiResponse<IEnumerable<GroupDto>>.Ok(result));
+    }
+
     [HttpGet("{id:guid}")]
     public async Task<ActionResult<ApiResponse<GroupDto>>> GetById(Guid id)
     {

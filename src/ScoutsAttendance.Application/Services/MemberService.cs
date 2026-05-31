@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using ScoutsAttendance.Application.Common;
 using ScoutsAttendance.Application.DTOs.Members;
 using ScoutsAttendance.Application.Interfaces;
+using ScoutsAttendance.Domain.Constants;
 
 namespace ScoutsAttendance.Application.Services;
 
@@ -151,6 +152,10 @@ public class MemberService : IMemberService
 
     public async Task<MemberDto> CreateAsync(CreateMemberDto dto)
     {
+        if (!AcademicGrades.IsValid(dto.AcademicYear))
+            throw new ArgumentException(
+                $"'{dto.AcademicYear}' is not a valid academic grade. Use one of the allowed values.");
+
         var troop = await _uow.Troops.GetByIdAsync(dto.TroopId)
             ?? throw new InvalidOperationException("Troop not found");
 
@@ -186,6 +191,10 @@ public class MemberService : IMemberService
 
     public async Task<MemberDto?> UpdateAsync(Guid id, UpdateMemberDto dto)
     {
+        if (!AcademicGrades.IsValid(dto.AcademicYear))
+            throw new ArgumentException(
+                $"'{dto.AcademicYear}' is not a valid academic grade. Use one of the allowed values.");
+
         var member = await _uow.Members.GetByIdAsync(id);
         if (member is null) return null;
 

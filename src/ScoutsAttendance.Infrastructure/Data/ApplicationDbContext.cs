@@ -374,6 +374,11 @@ public class ApplicationDbContext : DbContext
         // ─── MemberTransferRequest ─────────────────────────────────────────────
         mb.Entity<MemberTransferRequest>(e =>
         {
+            // DbSet property is "TransferRequests" but the physical table is
+            // "MemberTransferRequests" (created by DbSeeder + EnsureCreated).
+            // Without this override EF Core would look for a "TransferRequests"
+            // table that doesn't exist, causing every write to fail.
+            e.ToTable("MemberTransferRequests");
             e.HasIndex(r => r.MemberId);
             e.HasIndex(r => r.FromGroupId);
             e.HasIndex(r => r.ToGroupId);

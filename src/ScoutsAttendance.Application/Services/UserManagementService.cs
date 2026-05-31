@@ -81,7 +81,8 @@ public class UserManagementService : IUserManagementService
             CanAccessPoints      = dto.CanAccessPoints,
             CanAccessLeaderboard = dto.CanAccessLeaderboard,
             CanAccessExamScores  = dto.CanAccessExamScores,
-            CanAccessReports     = dto.CanAccessReports
+            CanAccessReports     = dto.CanAccessReports,
+            CanAccessBadges      = dto.CanAccessBadges
         };
 
         await _uow.Users.AddAsync(user);
@@ -114,6 +115,7 @@ public class UserManagementService : IUserManagementService
         user.CanAccessLeaderboard = dto.CanAccessLeaderboard;
         user.CanAccessExamScores  = dto.CanAccessExamScores;
         user.CanAccessReports     = dto.CanAccessReports;
+        user.CanAccessBadges      = dto.CanAccessBadges;
         user.UpdatedAt         = DateTime.UtcNow;
 
         _uow.Users.Update(user);
@@ -205,6 +207,7 @@ public class UserManagementService : IUserManagementService
         CanAccessLeaderboard = u.CanAccessLeaderboard,
         CanAccessExamScores  = u.CanAccessExamScores,
         CanAccessReports     = u.CanAccessReports,
+        CanAccessBadges      = u.CanAccessBadges,
         CreatedAt         = u.CreatedAt
     };
 }

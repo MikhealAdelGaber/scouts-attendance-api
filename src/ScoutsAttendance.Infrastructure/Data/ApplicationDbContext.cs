@@ -59,6 +59,8 @@ public class ApplicationDbContext : DbContext
             e.Property(u => u.CanAccessLeaderboard).HasDefaultValue(true);
             e.Property(u => u.CanAccessExamScores).HasDefaultValue(true);
             e.Property(u => u.CanAccessReports).HasDefaultValue(true);
+            // Badges permission defaults false — opt-in for non-admin roles
+            e.Property(u => u.CanAccessBadges).HasDefaultValue(false);
         });
 
         // ─── Group ─────────────────────────────────────────────────────────────
@@ -371,6 +373,8 @@ public class ApplicationDbContext : DbContext
         {
             e.HasIndex(mb => mb.MemberId);
             e.HasIndex(mb => mb.BadgeId);
+            // TroopName is a denormalised snapshot — nullable, no FK constraint
+            e.Property(mb => mb.TroopName).HasMaxLength(200).IsRequired(false);
             e.HasOne(mb => mb.Member)
                 .WithMany()
                 .HasForeignKey(mb => mb.MemberId)

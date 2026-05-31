@@ -31,6 +31,10 @@ public class JwtService : IJwtService
         bool canEdit   = isAdmin || user.CanEditMembers;
         bool canEvents = isAdmin || user.CanCreateEvents;
         bool canTrips  = isAdmin || user.CanAccessTrips;
+        // Badges: SystemAdmin + GroupLeader always true; others need the flag
+        bool canBadges = isAdmin
+                       || user.Role == Domain.Enums.UserRole.GroupLeader
+                       || user.CanAccessBadges;
 
         // Page-access permissions — SystemAdmin always true; others use stored value
         bool B(bool stored) => isAdmin || stored;
@@ -48,6 +52,7 @@ public class JwtService : IJwtService
             new Claim("canEditMembers",    canEdit.ToString().ToLower()),
             new Claim("canCreateEvents",   canEvents.ToString().ToLower()),
             new Claim("canAccessTrips",    canTrips.ToString().ToLower()),
+            new Claim("canAccessBadges",   canBadges.ToString().ToLower()),
             // Page-access permissions
             new Claim("canAccessDashboard",   B(user.CanAccessDashboard).ToString().ToLower()),
             new Claim("canAccessTroops",      B(user.CanAccessTroops).ToString().ToLower()),

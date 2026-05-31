@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using ScoutsAttendance.Application.Common;
 using ScoutsAttendance.Application.DTOs.Badges;
+using ScoutsAttendance.Application.Interfaces;
 using ScoutsAttendance.Application.Services;
 
 namespace ScoutsAttendance.API.Controllers;
@@ -11,16 +12,24 @@ namespace ScoutsAttendance.API.Controllers;
 [Authorize]
 public class BadgesController : ControllerBase
 {
-    private readonly IBadgeService _service;
+    private readonly IBadgeService      _service;
+    private readonly ICurrentUserService _currentUser;
 
-    public BadgesController(IBadgeService service) => _service = service;
+    public BadgesController(IBadgeService service, ICurrentUserService currentUser)
+    {
+        _service     = service;
+        _currentUser = currentUser;
+    }
 
     // ── Catalog ───────────────────────────────────────────────────────────────
 
-    /// <summary>GET /api/badges — all badges in catalog (all roles).</summary>
+    /// <summary>GET /api/badges — all badges in catalog (anyone who can access badges).</summary>
     [HttpGet]
     public async Task<ActionResult<ApiResponse<IEnumerable<BadgeDto>>>> GetAll()
     {
+        if (!_currentUser.CanAccessBadges)
+            return Forbid();
+
         var result = await _service.GetAllBadgesAsync();
         return Ok(ApiResponse<IEnumerable<BadgeDto>>.Ok(result));
     }
@@ -29,6 +38,9 @@ public class BadgesController : ControllerBase
     [HttpGet("{id:guid}")]
     public async Task<ActionResult<ApiResponse<BadgeDto>>> GetById(Guid id)
     {
+        if (!_currentUser.CanAccessBadges)
+            return Forbid();
+
         var result = await _service.GetBadgeByIdAsync(id);
         return result is null
             ? NotFound(ApiResponse.Fail("Badge not found"))
@@ -72,15 +84,21 @@ public class BadgesController : ControllerBase
     [HttpGet("member/{memberId:guid}")]
     public async Task<ActionResult<ApiResponse<IEnumerable<MemberBadgeDto>>>> GetMemberBadges(Guid memberId)
     {
+        if (!_currentUser.CanAccessBadges)
+            return Forbid();
+
         var result = await _service.GetMemberBadgesAsync(memberId);
         return Ok(ApiResponse<IEnumerable<MemberBadgeDto>>.Ok(result));
     }
 
-    /// <summary>POST /api/badges/member/{memberId} — award badge (GroupLeader, SystemAdmin, AttendanceOnly).</summary>
+    /// <summary>POST /api/badges/member/{memberId} — award badge.
+    /// Allowed: SystemAdmin, GroupLeader, or any user with canAccessBadges claim.</summary>
     [HttpPost("member/{memberId:guid}")]
-    [Authorize(Roles = "SystemAdmin,GroupLeader,AttendanceOnly")]
     public async Task<ActionResult<ApiResponse<MemberBadgeDto>>> Award(Guid memberId, [FromBody] AwardBadgeDto dto)
     {
+        if (!_currentUser.CanAccessBadges)
+            return Forbid();
+
         try
         {
             var result = await _service.AwardBadgeAsync(memberId, dto);
@@ -92,7 +110,8 @@ public class BadgesController : ControllerBase
         }
     }
 
-    /// <summary>DELETE /api/badges/member/{memberId}/{memberBadgeId} — remove award (GroupLeader, SystemAdmin).</summary>
+    /// <summary>DELETE /api/badges/member/{memberId}/{memberBadgeId} — remove award.
+    /// Allowed: SystemAdmin or GroupLeader only.</summary>
     [HttpDelete("member/{memberId:guid}/{memberBadgeId:guid}")]
     [Authorize(Roles = "SystemAdmin,GroupLeader")]
     public async Task<ActionResult<ApiResponse>> Remove(Guid memberId, Guid memberBadgeId)
@@ -101,5 +120,19 @@ public class BadgesController : ControllerBase
         return ok
             ? Ok(ApiResponse.Ok("Badge removed"))
             : NotFound(ApiResponse.Fail("Award record not found"));
+    }
+
+    // ── Activity Feed ─────────────────────────────────────────────────────────
+
+    /// <summary>GET /api/badges/recent?limit=30 — latest awarded badges in the user's group.</summary>
+    [HttpGet("recent")]
+    public async Task<ActionResult<ApiResponse<IEnumerable<MemberBadgeDto>>>> GetRecent([FromQuery] int limit = 30)
+    {
+        if (!_currentUser.CanAccessBadges)
+            return Forbid();
+
+        if (limit < 1 || limit > 100) limit = 30;
+        var result = await _service.GetRecentBadgesAsync(limit);
+        return Ok(ApiResponse<IEnumerable<MemberBadgeDto>>.Ok(result));
     }
 }

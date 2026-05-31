@@ -30,6 +30,7 @@ public class UserDto
     public bool     CanAccessLeaderboard { get; set; }
     public bool     CanAccessExamScores  { get; set; }
     public bool     CanAccessReports     { get; set; }
+    public bool     CanAccessBadges      { get; set; }
     public DateTime CreatedAt  { get; set; }
 }
 
@@ -56,6 +57,7 @@ public class CreateUserDto
     public bool  CanAccessLeaderboard { get; set; } = true;
     public bool  CanAccessExamScores  { get; set; } = true;
     public bool  CanAccessReports     { get; set; } = true;
+    public bool  CanAccessBadges      { get; set; } = false;
 }
 
 public class UpdateUserDto
@@ -79,6 +81,7 @@ public class UpdateUserDto
     public bool  CanAccessLeaderboard { get; set; } = true;
     public bool  CanAccessExamScores  { get; set; } = true;
     public bool  CanAccessReports     { get; set; } = true;
+    public bool  CanAccessBadges      { get; set; } = false;
 }
 
 public class UserLeaderDto

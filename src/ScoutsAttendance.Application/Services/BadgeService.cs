@@ -20,6 +20,9 @@ public interface IBadgeService
     Task<IEnumerable<MemberBadgeDto>> GetMemberBadgesAsync(Guid memberId);
     Task<MemberBadgeDto>              AwardBadgeAsync(Guid memberId, AwardBadgeDto dto);
     Task<bool>                        RemoveMemberBadgeAsync(Guid memberId, Guid memberBadgeId);
+
+    // Activity feed — recent awards in the current user's group
+    Task<IEnumerable<MemberBadgeDto>> GetRecentBadgesAsync(int limit = 30);
 }
 
 // ─── Implementation ───────────────────────────────────────────────────────────
@@ -126,12 +129,22 @@ public class BadgeService : IBadgeService
         var badge = await _uow.Badges.GetByIdAsync(dto.BadgeId)
             ?? throw new KeyNotFoundException($"Badge {dto.BadgeId} not found");
 
+        // Resolve troop name snapshot — persist it as a string so it survives
+        // troop deletion or member transfers with no data loss.
+        string? troopNameSnapshot = null;
+        if (_currentUser.TroopId.HasValue)
+        {
+            var troop = await _uow.Troops.GetByIdAsync(_currentUser.TroopId.Value);
+            troopNameSnapshot = troop?.Name;
+        }
+
         var record = new MemberBadge
         {
             MemberId    = memberId,
             BadgeId     = dto.BadgeId,
             AwardedDate = DateTime.SpecifyKind(dto.AwardedDate.Date, DateTimeKind.Utc),
             TroopId     = _currentUser.TroopId,
+            TroopName   = troopNameSnapshot,
             AwardedBy   = _currentUser.Username ?? "unknown",
             Notes       = dto.Notes?.Trim()
         };
@@ -161,6 +174,29 @@ public class BadgeService : IBadgeService
         return true;
     }
 
+    public async Task<IEnumerable<MemberBadgeDto>> GetRecentBadgesAsync(int limit = 30)
+    {
+        var query = _uow.MemberBadges.Query()
+            .Include(mb => mb.Badge)
+            .Include(mb => mb.Member)
+            .Where(mb => !mb.IsDeleted && !mb.Member.IsDeleted);
+
+        // Scope to the current user's group when not SystemAdmin
+        if (!_currentUser.IsSystemAdmin && _currentUser.GroupId.HasValue)
+        {
+            var groupId = _currentUser.GroupId.Value;
+            query = query.Where(mb => mb.Member.GroupId == groupId);
+        }
+
+        var records = await query
+            .OrderByDescending(mb => mb.AwardedDate)
+            .ThenByDescending(mb => mb.CreatedAt)
+            .Take(limit)
+            .ToListAsync();
+
+        return records.Select(MapMemberBadgeToDto);
+    }
+
     // ── Mappers ───────────────────────────────────────────────────────────────
 
     private static BadgeDto MapBadgeToDto(Badge b) => new()
@@ -183,7 +219,8 @@ public class BadgeService : IBadgeService
         BadgeCategory = mb.Badge?.Category,
         AwardedDate   = mb.AwardedDate,
         TroopId       = mb.TroopId,
-        TroopName     = mb.Troop?.Name,
+        // Prefer the stored snapshot (immutable history); fall back to live nav for older records
+        TroopName     = mb.TroopName ?? mb.Troop?.Name,
         AwardedBy     = mb.AwardedBy,
         Notes         = mb.Notes
     };

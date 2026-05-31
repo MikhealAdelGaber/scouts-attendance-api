@@ -574,6 +574,22 @@ public static class DbSeeder
             try { await context.Database.ExecuteSqlRawAsync(@"CREATE INDEX IF NOT EXISTS ""IX_Badges_Category""      ON ""Badges"" (""Category"")"); } catch { }
             try { await context.Database.ExecuteSqlRawAsync(@"CREATE INDEX IF NOT EXISTS ""IX_MemberBadges_MemberId"" ON ""MemberBadges"" (""MemberId"")"); } catch { }
             try { await context.Database.ExecuteSqlRawAsync(@"CREATE INDEX IF NOT EXISTS ""IX_MemberBadges_BadgeId""  ON ""MemberBadges"" (""BadgeId"")"); } catch { }
+
+            // ── CanAccessBadges on Users (defaults FALSE — opt-in) ─────────────────
+            try
+            {
+                await context.Database.ExecuteSqlRawAsync(
+                    @"ALTER TABLE ""Users"" ADD COLUMN IF NOT EXISTS ""CanAccessBadges"" BOOLEAN NOT NULL DEFAULT false");
+            }
+            catch { /* safe */ }
+
+            // ── TroopName snapshot on MemberBadges ────────────────────────────────
+            try
+            {
+                await context.Database.ExecuteSqlRawAsync(
+                    @"ALTER TABLE ""MemberBadges"" ADD COLUMN IF NOT EXISTS ""TroopName"" TEXT");
+            }
+            catch { /* safe */ }
         }
         else
         {

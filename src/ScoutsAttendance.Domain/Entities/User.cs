@@ -31,6 +31,9 @@ public class User : BaseEntity
     public bool CanAccessExamScores  { get; set; } = true;
     public bool CanAccessReports     { get; set; } = true;
 
+    // Badge access permission — defaults FALSE (opt-in for non-admin roles)
+    public bool CanAccessBadges      { get; set; } = false;
+
     // Navigation
     public Group?  Group  { get; set; }
     public Troop?  Troop  { get; set; }

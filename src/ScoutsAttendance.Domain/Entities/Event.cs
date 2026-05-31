@@ -20,6 +20,8 @@ public class Event : BaseEntity
     public decimal  ExcusedPoints   { get; set; } = 100m;
     /// <summary>Points applied when a member is marked Absent (can be negative).</summary>
     public decimal  AbsentPoints    { get; set; } = -10m;
+    /// <summary>Points awarded when a member is marked Too Late (default 0).</summary>
+    public decimal  TooLatePoints   { get; set; } = 0m;
 
     public Group  Group { get; set; } = null!;
     public Troop? Troop { get; set; }

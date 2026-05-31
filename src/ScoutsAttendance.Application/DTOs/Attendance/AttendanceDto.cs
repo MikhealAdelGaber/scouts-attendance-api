@@ -50,10 +50,11 @@ public class AttendanceSummaryDto
     public Guid EventId { get; set; }
     public string EventName { get; set; } = string.Empty;
     public int TotalMembers { get; set; }
-    public int Present { get; set; }
-    public int Late { get; set; }
-    public int Absent { get; set; }
-    public int Excused { get; set; }
+    public int Present  { get; set; }
+    public int Late     { get; set; }
+    public int TooLate  { get; set; }
+    public int Absent   { get; set; }
+    public int Excused  { get; set; }
     public double AttendanceRate { get; set; }
 }
 

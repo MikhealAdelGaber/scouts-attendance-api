@@ -234,17 +234,18 @@ public class AttendanceService : IAttendanceService
 
         // Tally — members with no record get an auto-derived status
         // (Excused if an active excuse covers the event date, Absent otherwise)
-        int present = 0, late = 0, absent = 0, excused = 0;
+        int present = 0, late = 0, tooLate = 0, absent = 0, excused = 0;
         foreach (var m in members)
         {
             if (recordMap.TryGetValue(m.Id, out var status))
             {
                 switch (status)
                 {
-                    case AttendanceStatus.Present: present++; break;
-                    case AttendanceStatus.Late:    late++;    break;
+                    case AttendanceStatus.Present: present++;  break;
+                    case AttendanceStatus.Late:    late++;     break;
+                    case AttendanceStatus.TooLate: tooLate++; break;
                     case AttendanceStatus.Excused: excused++; break;
-                    default:                       absent++;  break;
+                    default:                       absent++;   break;
                 }
             }
             else
@@ -256,9 +257,10 @@ public class AttendanceService : IAttendanceService
         }
 
         int total = members.Count;
-        // Rate = (Present + Late + Excused) / TotalMembers × 100
+        // Rate = (Present + Late + TooLate + Excused) / TotalMembers × 100
+        // TooLate members did physically attend — counted toward rate
         double rate = total == 0 ? 0
-            : Math.Round((present + late + excused) * 100.0 / total, 1);
+            : Math.Round((present + late + tooLate + excused) * 100.0 / total, 1);
 
         return new AttendanceSummaryDto
         {
@@ -267,6 +269,7 @@ public class AttendanceService : IAttendanceService
             TotalMembers   = total,
             Present        = present,
             Late           = late,
+            TooLate        = tooLate,
             Absent         = absent,
             Excused        = excused,
             AttendanceRate = rate
@@ -301,6 +304,7 @@ public class AttendanceService : IAttendanceService
         {
             AttendanceStatus.Present => ev.PresentPoints,
             AttendanceStatus.Late    => ev.LatePoints,
+            AttendanceStatus.TooLate => ev.TooLatePoints,
             AttendanceStatus.Excused => ev.PresentPoints,   // same as Present
             AttendanceStatus.Absent  => ev.AbsentPoints,
             _                        => 0

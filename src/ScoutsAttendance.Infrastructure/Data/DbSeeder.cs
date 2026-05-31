@@ -368,6 +368,13 @@ public static class DbSeeder
             }
             catch { /* safe */ }
 
+            try
+            {
+                await context.Database.ExecuteSqlRawAsync(
+                    @"ALTER TABLE ""Events"" ADD COLUMN IF NOT EXISTS ""TooLatePoints"" DECIMAL(10,2) NOT NULL DEFAULT 0");
+            }
+            catch { /* safe */ }
+
             // ── Trips feature ─────────────────────────────────────────────────────
             // Add CanAccessTrips to Users
             try

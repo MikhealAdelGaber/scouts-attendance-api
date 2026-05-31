@@ -17,6 +17,7 @@ public class EventDto
     public decimal  LatePoints      { get; set; }
     public decimal  ExcusedPoints   { get; set; }
     public decimal  AbsentPoints    { get; set; }
+    public decimal  TooLatePoints   { get; set; }
     public int      AttendanceCount { get; set; }
     public DateTime CreatedAt       { get; set; }
 }
@@ -33,6 +34,7 @@ public class CreateEventDto
     [Range(-10000, 10000)] public decimal LatePoints     { get; set; } = 50m;
     [Range(-10000, 10000)] public decimal ExcusedPoints  { get; set; } = 50m;
     [Range(-10000, 10000)] public decimal AbsentPoints   { get; set; } = -10m;
+    [Range(-10000, 10000)] public decimal TooLatePoints  { get; set; } = 0m;
 }
 
 public class UpdateEventDto
@@ -46,4 +48,5 @@ public class UpdateEventDto
     [Range(-10000, 10000)] public decimal LatePoints     { get; set; } = 50m;
     [Range(-10000, 10000)] public decimal ExcusedPoints  { get; set; } = 50m;
     [Range(-10000, 10000)] public decimal AbsentPoints   { get; set; } = -10m;
+    [Range(-10000, 10000)] public decimal TooLatePoints  { get; set; } = 0m;
 }

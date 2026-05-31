@@ -206,7 +206,7 @@ public class ExcelExportService : IExcelExportService
 
         foreach (var m in members)
         {
-            int present = 0, late = 0, excused = 0, absent = 0, total = 0;
+            int present = 0, late = 0, tooLate = 0, excused = 0, absent = 0, total = 0;
 
             foreach (var ev in events)
             {
@@ -223,10 +223,11 @@ public class ExcelExportService : IExcelExportService
                 {
                     switch (status)
                     {
-                        case AttendanceStatus.Present: present++; break;
-                        case AttendanceStatus.Late:    late++;    break;
+                        case AttendanceStatus.Present: present++;  break;
+                        case AttendanceStatus.Late:    late++;     break;
+                        case AttendanceStatus.TooLate: tooLate++; break;
                         case AttendanceStatus.Excused: excused++; break;
-                        default:                       absent++;  break;
+                        default:                       absent++;   break;
                     }
                 }
                 else
@@ -248,6 +249,7 @@ public class ExcelExportService : IExcelExportService
                 TotalEvents = total,
                 Present     = present,
                 Late        = late,
+                TooLate     = tooLate,
                 Excused     = excused,
                 Absent      = absent
             });
@@ -264,7 +266,7 @@ public class ExcelExportService : IExcelExportService
 
         // ── Sheet 1: Summary ─────────────────────────────────────────────────
         var wsSummary = wb.Worksheets.Add("Summary");
-        const int sumCols = 8;
+        const int sumCols = 9;
         AddLogoRow(wsSummary, "Attendance Rate Report — Scouts Attendance System");
         wsSummary.Range(1, 1, 1, sumCols).Merge();
 
@@ -275,7 +277,7 @@ public class ExcelExportService : IExcelExportService
         wsSummary.Cell(2, 1).Style.Font.FontColor = XLColor.FromHtml("#555555");
         wsSummary.Range(2, 1, 2, sumCols).Merge();
 
-        var sumHeaders = new[] { "Rank", "Member", "Troop", "Total Events", "Present", "Late", "Excused", "Attendance Rate %" };
+        var sumHeaders = new[] { "Rank", "Member", "Troop", "Total Events", "Present", "Late", "Too Late", "Excused", "Attendance Rate %" };
         var shRow = wsSummary.Row(4);
         for (int i = 0; i < sumHeaders.Length; i++) shRow.Cell(i + 1).Value = sumHeaders[i];
         StyleHeader(shRow, sumHeaders.Length);
@@ -289,8 +291,9 @@ public class ExcelExportService : IExcelExportService
             wsSummary.Cell(sRow, 4).Value = r.TotalEvents;
             wsSummary.Cell(sRow, 5).Value = r.Present;
             wsSummary.Cell(sRow, 6).Value = r.Late;
-            wsSummary.Cell(sRow, 7).Value = r.Excused;
-            wsSummary.Cell(sRow, 8).Value = r.Rate;
+            wsSummary.Cell(sRow, 7).Value = r.TooLate;
+            wsSummary.Cell(sRow, 8).Value = r.Excused;
+            wsSummary.Cell(sRow, 9).Value = r.Rate;
 
             // Colour-code the rate cell
             var rateColor = r.Rate switch
@@ -300,7 +303,7 @@ public class ExcelExportService : IExcelExportService
                 >= 50 => XLColor.FromHtml("#ffe0b2"),   // orange
                 _     => XLColor.FromHtml("#ffcdd2")    // red
             };
-            wsSummary.Cell(sRow, 8).Style.Fill.BackgroundColor = rateColor;
+            wsSummary.Cell(sRow, 9).Style.Fill.BackgroundColor = rateColor;
 
             if (sRow % 2 == 0)
                 wsSummary.Range(sRow, 1, sRow, sumCols).Style.Fill.BackgroundColor = XLColor.FromHtml("#f3f4f9");
@@ -385,6 +388,7 @@ public class ExcelExportService : IExcelExportService
             {
                 "Present" => XLColor.FromHtml("#c8e6c9"),
                 "Late"    => XLColor.FromHtml("#fff9c4"),
+                "TooLate" => XLColor.FromHtml("#ffe0b2"),
                 "Absent"  => XLColor.FromHtml("#ffcdd2"),
                 "Excused" => XLColor.FromHtml("#bbdefb"),
                 _         => XLColor.NoColor

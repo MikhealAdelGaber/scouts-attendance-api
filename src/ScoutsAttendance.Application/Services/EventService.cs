@@ -94,6 +94,7 @@ public class EventService : IEventService
             LatePoints    = dto.LatePoints,
             ExcusedPoints = dto.ExcusedPoints,
             AbsentPoints  = dto.AbsentPoints,
+            TooLatePoints = dto.TooLatePoints,
             CreatedBy     = _currentUser.UserId
         };
 
@@ -115,6 +116,7 @@ public class EventService : IEventService
         ev.LatePoints    = dto.LatePoints;
         ev.ExcusedPoints = dto.ExcusedPoints;
         ev.AbsentPoints  = dto.AbsentPoints;
+        ev.TooLatePoints = dto.TooLatePoints;
         ev.UpdatedAt     = DateTime.UtcNow;
 
         _uow.Events.Update(ev);
@@ -146,6 +148,7 @@ public class EventService : IEventService
         LatePoints      = e.LatePoints,
         ExcusedPoints   = e.ExcusedPoints,
         AbsentPoints    = e.AbsentPoints,
+        TooLatePoints   = e.TooLatePoints,
         AttendanceCount = e.AttendanceRecords?.Count(a => !a.IsDeleted) ?? 0,
         CreatedAt       = e.CreatedAt
     };

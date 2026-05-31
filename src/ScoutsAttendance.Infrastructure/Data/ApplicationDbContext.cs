@@ -129,6 +129,7 @@ public class ApplicationDbContext : DbContext
             e.Property(ev => ev.LatePoints).HasColumnType("decimal(10,2)").HasDefaultValue(50m);
             e.Property(ev => ev.ExcusedPoints).HasColumnType("decimal(10,2)").HasDefaultValue(50m);
             e.Property(ev => ev.AbsentPoints).HasColumnType("decimal(10,2)").HasDefaultValue(-10m);
+            e.Property(ev => ev.TooLatePoints).HasColumnType("decimal(10,2)").HasDefaultValue(0m);
             e.HasOne(ev => ev.Group)
                 .WithMany(g => g.Events)
                 .HasForeignKey(ev => ev.GroupId)

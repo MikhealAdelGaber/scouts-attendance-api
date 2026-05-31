@@ -33,6 +33,10 @@ public class ApplicationDbContext : DbContext
     public DbSet<Badge>       Badges       => Set<Badge>();
     public DbSet<MemberBadge> MemberBadges => Set<MemberBadge>();
 
+    // ── Projects ──────────────────────────────────────────────────────────────
+    public DbSet<Project>            Projects      => Set<Project>();
+    public DbSet<MemberProjectScore> ProjectScores => Set<MemberProjectScore>();
+
     // ── Transfer Requests ─────────────────────────────────────────────────────
     public DbSet<MemberTransferRequest>  TransferRequests  => Set<MemberTransferRequest>();
     public DbSet<MemberTransferArchive>  TransferArchives  => Set<MemberTransferArchive>();
@@ -476,5 +480,47 @@ public class ApplicationDbContext : DbContext
             e.Property(a => a.TotalPointsAtTransfer).HasColumnType("decimal(10,2)");
         });
         mb.Entity<MemberTransferArchive>().HasQueryFilter(e => !e.IsDeleted);
+
+        // ─── Project ───────────────────────────────────────────────────────────
+        mb.Entity<Project>(e =>
+        {
+            e.ToTable("Projects");
+            e.HasIndex(p => p.GroupId);
+            e.HasIndex(p => p.TroopId);
+            e.Property(p => p.Name).HasMaxLength(200);
+            e.Property(p => p.Description).HasMaxLength(1000).IsRequired(false);
+            e.Property(p => p.MaxScore).HasColumnType("decimal(10,2)");
+            e.Property(p => p.CreatedBy).HasMaxLength(200);
+            e.HasOne(p => p.Group)
+                .WithMany()
+                .HasForeignKey(p => p.GroupId)
+                .OnDelete(DeleteBehavior.Restrict);
+            e.HasOne(p => p.Troop)
+                .WithMany()
+                .HasForeignKey(p => p.TroopId)
+                .IsRequired(false)
+                .OnDelete(DeleteBehavior.SetNull);
+        });
+        mb.Entity<Project>().HasQueryFilter(e => !e.IsDeleted);
+
+        // ─── MemberProjectScore ────────────────────────────────────────────────
+        mb.Entity<MemberProjectScore>(e =>
+        {
+            e.ToTable("MemberProjectScores");
+            e.HasIndex(s => new { s.ProjectId, s.MemberId }).IsUnique();
+            e.HasIndex(s => s.MemberId);
+            e.Property(s => s.Score).HasColumnType("decimal(10,2)");
+            e.Property(s => s.Notes).HasMaxLength(500).IsRequired(false);
+            e.Property(s => s.GradedBy).HasMaxLength(200);
+            e.HasOne(s => s.Project)
+                .WithMany(p => p.Scores)
+                .HasForeignKey(s => s.ProjectId)
+                .OnDelete(DeleteBehavior.Cascade);
+            e.HasOne(s => s.Member)
+                .WithMany()
+                .HasForeignKey(s => s.MemberId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+        mb.Entity<MemberProjectScore>().HasQueryFilter(e => !e.IsDeleted);
     }
 }

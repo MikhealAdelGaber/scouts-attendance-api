@@ -39,6 +39,10 @@ public class UnitOfWork : IUnitOfWork
         Badges       = new GenericRepository<Badge>(context);
         MemberBadges = new GenericRepository<MemberBadge>(context);
 
+        // Projects
+        Projects      = new GenericRepository<Project>(context);
+        ProjectScores = new GenericRepository<MemberProjectScore>(context);
+
         // Transfer Requests
         TransferRequests = new GenericRepository<MemberTransferRequest>(context);
         TransferArchives = new GenericRepository<MemberTransferArchive>(context);
@@ -73,6 +77,10 @@ public class UnitOfWork : IUnitOfWork
     // Badges
     public IRepository<Badge>       Badges       { get; }
     public IRepository<MemberBadge> MemberBadges { get; }
+
+    // Projects
+    public IRepository<Project>             Projects      { get; }
+    public IRepository<MemberProjectScore>  ProjectScores { get; }
 
     // Transfer Requests
     public IRepository<MemberTransferRequest>  TransferRequests  { get; }

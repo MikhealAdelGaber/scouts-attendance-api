@@ -79,6 +79,8 @@ public class CurrentUserService : ICurrentUserService
                                    || IsSystemAdmin;
     public bool CanAccessBadges   => ReadBoolClaim("canAccessBadges")
                                    || IsSystemAdmin || IsGroupLeader;
+    public bool CanAccessProjects => ReadBoolClaim("canAccessProjects")
+                                   || IsSystemAdmin || IsGroupLeader;
 
     private bool ReadBoolClaim(string name)
     {

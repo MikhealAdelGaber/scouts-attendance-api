@@ -1,6 +1,7 @@
 using ClosedXML.Excel;
 using Microsoft.EntityFrameworkCore;
 using ScoutsAttendance.Application.DTOs.Admin;
+using ScoutsAttendance.Application.DTOs.Projects;
 using ScoutsAttendance.Application.DTOs.Reports;
 using ScoutsAttendance.Application.Services;
 using ScoutsAttendance.Application.Interfaces;
@@ -638,6 +639,85 @@ public class ExcelExportService : IExcelExportService
         ws2.Columns().AdjustToContents();
         ws2.SheetView.FreezeRows(3);
 
+        return Task.FromResult(WorkbookToBytes(wb));
+    }
+
+    // ─── Project Results Export ─────────────────────────────────────────────
+
+    public Task<byte[]> ExportProjectResultsAsync(
+        ProjectDto project, IEnumerable<ProjectMemberScoreDto> members)
+    {
+        using var wb = new XLWorkbook();
+        var ws = wb.Worksheets.Add("Results");
+
+        AddLogoRow(ws, $"Project Results — {project.Name}");
+        ws.Range(1, 1, 1, 7).Merge();
+
+        // Sub-header
+        ws.Cell(2, 1).Value = $"Max Score: {project.MaxScore}  |  Group: {project.GroupName}" +
+                              (project.TroopName != null ? $"  |  Troop: {project.TroopName}" : string.Empty);
+        ws.Cell(2, 1).Style.Font.Italic = true;
+        ws.Range(2, 1, 2, 7).Merge();
+
+        var headers = new[] { "Rank", "Member Name", "ID", "Troop", "Score", "Max", "%", "Grade" };
+        var hRow = ws.Row(3);
+        for (int i = 0; i < headers.Length; i++) hRow.Cell(i + 1).Value = headers[i];
+        StyleHeader(hRow, headers.Length);
+
+        var sorted = members
+            .Where(m => m.IsGraded)
+            .OrderByDescending(m => m.Score)
+            .ToList();
+
+        int row = 4, rank = 1;
+        foreach (var m in sorted)
+        {
+            ws.Cell(row, 1).Value = rank++;
+            ws.Cell(row, 2).Value = m.MemberName;
+            ws.Cell(row, 3).Value = m.CustomId;
+            ws.Cell(row, 4).Value = m.TroopName ?? "—";
+            ws.Cell(row, 5).Value = (double)(m.Score ?? 0);
+            ws.Cell(row, 6).Value = (double)project.MaxScore;
+            ws.Cell(row, 7).Value = m.Percentage.HasValue ? $"{m.Percentage:F1}%" : "—";
+            ws.Cell(row, 8).Value = $"{m.Grade} ({m.GradeArabic})";
+            if (row % 2 == 0)
+                ws.Range(row, 1, row, headers.Length).Style.Fill.BackgroundColor = XLColor.FromHtml("#f3f4f9");
+            row++;
+        }
+
+        // Ungraded members
+        var ungraded = members.Where(m => !m.IsGraded).OrderBy(m => m.MemberName).ToList();
+        if (ungraded.Any())
+        {
+            ws.Cell(row, 1).Value = "— Not Yet Graded —";
+            ws.Range(row, 1, row, headers.Length).Merge();
+            ws.Cell(row, 1).Style.Font.Italic = true;
+            ws.Cell(row, 1).Style.Fill.BackgroundColor = XLColor.FromHtml("#fff3e0");
+            row++;
+            foreach (var m in ungraded)
+            {
+                ws.Cell(row, 1).Value = "—";
+                ws.Cell(row, 2).Value = m.MemberName;
+                ws.Cell(row, 3).Value = m.CustomId;
+                ws.Cell(row, 4).Value = m.TroopName ?? "—";
+                row++;
+            }
+        }
+
+        // Average row
+        if (sorted.Any())
+        {
+            double avg = sorted.Average(m => m.Percentage ?? 0);
+            ws.Cell(row, 1).Value = "Class Average";
+            ws.Range(row, 1, row, 6).Merge();
+            ws.Cell(row, 1).Style.Font.Bold = true;
+            ws.Cell(row, 7).Value = $"{avg:F1}%";
+            ws.Cell(row, 8).Value = ProjectService.GetGrade(avg) + " (" + ProjectService.GetGradeArabic(avg) + ")";
+            ws.Range(row, 1, row, headers.Length).Style.Fill.BackgroundColor = XLColor.FromHtml("#e8eaf6");
+        }
+
+        ws.Columns().AdjustToContents();
+        ws.SheetView.FreezeRows(3);
         return Task.FromResult(WorkbookToBytes(wb));
     }
 }

@@ -22,4 +22,6 @@ public interface ICurrentUserService
     bool    CanAccessTrips     { get; }
     /// <summary>True for SystemAdmin, GroupLeader, or any user with the canAccessBadges claim.</summary>
     bool    CanAccessBadges    { get; }
+    /// <summary>True for SystemAdmin, GroupLeader, or any user with the canAccessProjects claim.</summary>
+    bool    CanAccessProjects  { get; }
 }

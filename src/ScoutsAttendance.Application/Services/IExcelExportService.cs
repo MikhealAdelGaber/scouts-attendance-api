@@ -1,4 +1,5 @@
 using ScoutsAttendance.Application.DTOs.Admin;
+using ScoutsAttendance.Application.DTOs.Projects;
 using ScoutsAttendance.Application.DTOs.Reports;
 
 namespace ScoutsAttendance.Application.Services;
@@ -25,4 +26,7 @@ public interface IExcelExportService
 
     /// <summary>Exports a yearly archive as a two-sheet workbook: summary + per-member stats.</summary>
     Task<byte[]> ExportYearArchiveAsync(YearlyArchiveDetailDto archive);
+
+    /// <summary>Exports project results as Excel: all members with score, max, %, grade.</summary>
+    Task<byte[]> ExportProjectResultsAsync(ProjectDto project, IEnumerable<ProjectMemberScoreDto> members);
 }

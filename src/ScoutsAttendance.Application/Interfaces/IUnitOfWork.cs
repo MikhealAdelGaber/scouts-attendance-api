@@ -30,6 +30,10 @@ public interface IUnitOfWork : IDisposable
     IRepository<Badge>       Badges       { get; }
     IRepository<MemberBadge> MemberBadges { get; }
 
+    // ── Projects ──────────────────────────────────────────────────────────────
+    IRepository<Project>             Projects      { get; }
+    IRepository<MemberProjectScore>  ProjectScores { get; }
+
     // ── Transfer Requests ─────────────────────────────────────────────────────
     IRepository<MemberTransferRequest>  TransferRequests  { get; }
     IRepository<MemberTransferArchive>  TransferArchives  { get; }

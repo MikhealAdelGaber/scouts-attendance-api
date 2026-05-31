@@ -25,6 +25,7 @@ public static class DependencyInjection
         services.AddScoped<IPendingExcuseService,    PendingExcuseService>();
         services.AddScoped<ITransferRequestService, TransferRequestService>();
         services.AddScoped<INewYearService,          NewYearService>();
+        services.AddScoped<IProjectService,          ProjectService>();
         return services;
     }
 }

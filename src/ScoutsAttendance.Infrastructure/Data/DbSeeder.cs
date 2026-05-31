@@ -730,6 +730,64 @@ public static class DbSeeder
             try { await context.Database.ExecuteSqlRawAsync(@"CREATE INDEX IF NOT EXISTS ""IX_YearlyMemberArchives_ArchiveId"" ON ""YearlyMemberArchives"" (""YearlyArchiveId"")"); } catch { }
             try { await context.Database.ExecuteSqlRawAsync(@"CREATE INDEX IF NOT EXISTS ""IX_YearlyMemberArchives_MemberId""  ON ""YearlyMemberArchives"" (""MemberId"")"); } catch { }
             try { await context.Database.ExecuteSqlRawAsync(@"CREATE INDEX IF NOT EXISTS ""IX_YearlyMemberArchives_GroupId""   ON ""YearlyMemberArchives"" (""GroupId"")"); } catch { }
+
+            // ── CanAccessProjects column on Users ─────────────────────────────────
+            try
+            {
+                await context.Database.ExecuteSqlRawAsync(
+                    @"ALTER TABLE ""Users"" ADD COLUMN IF NOT EXISTS ""CanAccessProjects"" BOOLEAN NOT NULL DEFAULT false");
+            }
+            catch { /* safe */ }
+
+            // ── Projects table ────────────────────────────────────────────────────
+            try
+            {
+                await context.Database.ExecuteSqlRawAsync(@"
+                    CREATE TABLE IF NOT EXISTS ""Projects"" (
+                        ""Id""          UUID          NOT NULL DEFAULT gen_random_uuid() PRIMARY KEY,
+                        ""Name""        TEXT          NOT NULL DEFAULT '',
+                        ""Description"" TEXT,
+                        ""MaxScore""    DECIMAL(10,2) NOT NULL DEFAULT 0,
+                        ""GroupId""     UUID          NOT NULL,
+                        ""TroopId""     UUID,
+                        ""CreatedBy""   TEXT          NOT NULL DEFAULT '',
+                        ""IsActive""    BOOLEAN       NOT NULL DEFAULT true,
+                        ""CreatedAt""   TIMESTAMPTZ   NOT NULL DEFAULT now(),
+                        ""UpdatedAt""   TIMESTAMPTZ,
+                        ""IsDeleted""   BOOLEAN       NOT NULL DEFAULT false,
+                        FOREIGN KEY (""GroupId"") REFERENCES ""Groups""(""Id"") ON DELETE RESTRICT,
+                        FOREIGN KEY (""TroopId"") REFERENCES ""Troops""(""Id"") ON DELETE SET NULL
+                    )");
+            }
+            catch { /* already exists */ }
+
+            try { await context.Database.ExecuteSqlRawAsync(@"CREATE INDEX IF NOT EXISTS ""IX_Projects_GroupId"" ON ""Projects"" (""GroupId"")"); } catch { }
+            try { await context.Database.ExecuteSqlRawAsync(@"CREATE INDEX IF NOT EXISTS ""IX_Projects_TroopId"" ON ""Projects"" (""TroopId"")"); } catch { }
+
+            // ── MemberProjectScores table ─────────────────────────────────────────
+            try
+            {
+                await context.Database.ExecuteSqlRawAsync(@"
+                    CREATE TABLE IF NOT EXISTS ""MemberProjectScores"" (
+                        ""Id""        UUID          NOT NULL DEFAULT gen_random_uuid() PRIMARY KEY,
+                        ""ProjectId"" UUID          NOT NULL,
+                        ""MemberId""  UUID          NOT NULL,
+                        ""Score""     DECIMAL(10,2) NOT NULL DEFAULT 0,
+                        ""Notes""     TEXT,
+                        ""GradedBy""  TEXT          NOT NULL DEFAULT '',
+                        ""GradedAt""  TIMESTAMPTZ   NOT NULL DEFAULT now(),
+                        ""CreatedAt"" TIMESTAMPTZ   NOT NULL DEFAULT now(),
+                        ""UpdatedAt"" TIMESTAMPTZ,
+                        ""IsDeleted"" BOOLEAN       NOT NULL DEFAULT false,
+                        FOREIGN KEY (""ProjectId"") REFERENCES ""Projects""(""Id"") ON DELETE CASCADE,
+                        FOREIGN KEY (""MemberId"")  REFERENCES ""Members""(""Id"")  ON DELETE CASCADE,
+                        UNIQUE (""ProjectId"", ""MemberId"")
+                    )");
+            }
+            catch { /* already exists */ }
+
+            try { await context.Database.ExecuteSqlRawAsync(@"CREATE UNIQUE INDEX IF NOT EXISTS ""IX_ProjectScores_ProjectMember"" ON ""MemberProjectScores"" (""ProjectId"", ""MemberId"") WHERE ""IsDeleted"" = false"); } catch { }
+            try { await context.Database.ExecuteSqlRawAsync(@"CREATE INDEX IF NOT EXISTS ""IX_ProjectScores_MemberId"" ON ""MemberProjectScores"" (""MemberId"")"); } catch { }
         }
         else
         {

@@ -34,6 +34,9 @@ public class User : BaseEntity
     // Badge access permission — defaults FALSE (opt-in for non-admin roles)
     public bool CanAccessBadges      { get; set; } = false;
 
+    // Projects/Assessment access — defaults FALSE (opt-in for non-admin roles)
+    public bool CanAccessProjects    { get; set; } = false;
+
     // Navigation
     public Group?  Group  { get; set; }
     public Troop?  Troop  { get; set; }

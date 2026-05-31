@@ -34,6 +34,10 @@ public interface IUnitOfWork : IDisposable
     IRepository<MemberTransferRequest>  TransferRequests  { get; }
     IRepository<MemberTransferArchive>  TransferArchives  { get; }
 
+    // ── Yearly Archives ───────────────────────────────────────────────────────
+    IRepository<YearlyArchive>       YearlyArchives       { get; }
+    IRepository<YearlyMemberArchive> YearlyMemberArchives { get; }
+
     Task<int> SaveChangesAsync();
 
     /// <summary>
@@ -90,4 +94,22 @@ public interface IUnitOfWork : IDisposable
     /// excuse requests before the member joins their new group.
     /// </summary>
     Task<int> DeleteMemberPendingExcusesAsync(Guid memberId);
+
+    // ── Year-end global bulk deletes ──────────────────────────────────────────
+
+    /// <summary>Hard-deletes ALL MemberPoints rows across every member/group (year-end reset).</summary>
+    Task<int> DeleteAllMemberPointsGlobalAsync();
+
+    /// <summary>Hard-deletes ALL MemberExcuse rows across every member/group (year-end reset).</summary>
+    Task<int> DeleteAllMemberExcusesGlobalAsync();
+
+    /// <summary>Hard-deletes ALL PendingExcuse rows across every member/group (year-end reset).</summary>
+    Task<int> DeleteAllPendingExcusesGlobalAsync();
+
+    /// <summary>
+    /// Verifies <paramref name="plainPassword"/> against the BCrypt hash stored for
+    /// <paramref name="userId"/>.  Returns false if user not found or hash mismatch.
+    /// Used by the new-year reset to confirm the admin's identity server-side.
+    /// </summary>
+    Task<bool> VerifyUserPasswordAsync(Guid userId, string plainPassword);
 }

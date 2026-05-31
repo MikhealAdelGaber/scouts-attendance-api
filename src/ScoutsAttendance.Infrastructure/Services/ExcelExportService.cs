@@ -1,5 +1,6 @@
 using ClosedXML.Excel;
 using Microsoft.EntityFrameworkCore;
+using ScoutsAttendance.Application.DTOs.Admin;
 using ScoutsAttendance.Application.DTOs.Reports;
 using ScoutsAttendance.Application.Services;
 using ScoutsAttendance.Application.Interfaces;
@@ -573,5 +574,70 @@ public class ExcelExportService : IExcelExportService
         ws.Columns().AdjustToContents();
         ws.SheetView.FreezeRows(3);
         return WorkbookToBytes(wb);
+    }
+
+    // ─── Yearly Archive Export ──────────────────────────────────────────────
+
+    public Task<byte[]> ExportYearArchiveAsync(YearlyArchiveDetailDto archive)
+    {
+        using var wb = new XLWorkbook();
+
+        // ── Sheet 1: Summary ─────────────────────────────────────────────────
+        var ws1 = wb.Worksheets.Add("Summary");
+        AddLogoRow(ws1, $"Year Archive — {archive.ArchiveYear}");
+        ws1.Range(1, 1, 1, 4).Merge();
+
+        int r = 3;
+        void SummaryRow(string label, string value)
+        {
+            ws1.Cell(r, 1).Value = label;
+            ws1.Cell(r, 1).Style.Font.Bold = true;
+            ws1.Cell(r, 2).Value = value;
+            r++;
+        }
+
+        SummaryRow("Academic Year",  archive.ArchiveYear);
+        SummaryRow("Archived At",    archive.ArchivedAt.ToString("yyyy-MM-dd HH:mm") + " UTC");
+        SummaryRow("Archived By",    archive.ArchivedBy);
+        SummaryRow("Total Members",  archive.TotalMembers.ToString());
+        SummaryRow("Total Groups",   archive.TotalGroups.ToString());
+
+        ws1.Columns().AdjustToContents();
+
+        // ── Sheet 2: Members ─────────────────────────────────────────────────
+        var ws2 = wb.Worksheets.Add("Members");
+        AddLogoRow(ws2, $"Members — {archive.ArchiveYear}");
+        ws2.Range(1, 1, 1, 9).Merge();
+
+        var headers = new[]
+        {
+            "Member Name", "Group", "Troop", "Academic Grade",
+            "Total Points", "Attendance Records", "Events Attended", "Excuses"
+        };
+        var hRow = ws2.Row(3);
+        for (int i = 0; i < headers.Length; i++) hRow.Cell(i + 1).Value = headers[i];
+        StyleHeader(hRow, headers.Length);
+
+        int row = 4;
+        foreach (var m in archive.Members)
+        {
+            ws2.Cell(row, 1).Value = m.MemberName;
+            ws2.Cell(row, 2).Value = m.GroupName;
+            ws2.Cell(row, 3).Value = m.TroopName ?? "—";
+            ws2.Cell(row, 4).Value = m.AcademicGrade ?? "—";
+            ws2.Cell(row, 5).Value = (double)m.TotalPointsAtYearEnd;
+            ws2.Cell(row, 6).Value = m.TotalAttendanceCount;
+            ws2.Cell(row, 7).Value = m.TotalEventsAttended;
+            ws2.Cell(row, 8).Value = m.TotalExcusesCount;
+
+            if (row % 2 == 0)
+                ws2.Range(row, 1, row, headers.Length).Style.Fill.BackgroundColor = XLColor.FromHtml("#f3f4f9");
+            row++;
+        }
+
+        ws2.Columns().AdjustToContents();
+        ws2.SheetView.FreezeRows(3);
+
+        return Task.FromResult(WorkbookToBytes(wb));
     }
 }

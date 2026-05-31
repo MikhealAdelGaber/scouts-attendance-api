@@ -1,3 +1,4 @@
+using ScoutsAttendance.Application.DTOs.Admin;
 using ScoutsAttendance.Application.DTOs.Reports;
 
 namespace ScoutsAttendance.Application.Services;
@@ -21,4 +22,7 @@ public interface IExcelExportService
     Task<byte[]> ExportPointsAsync(Guid? troopId = null);
     Task<byte[]> ExportTroopPointsAsync(Guid? troopId = null);
     Task<byte[]> ExportExamScoresAsync(Guid? troopId = null, int? year = null);
+
+    /// <summary>Exports a yearly archive as a two-sheet workbook: summary + per-member stats.</summary>
+    Task<byte[]> ExportYearArchiveAsync(YearlyArchiveDetailDto archive);
 }

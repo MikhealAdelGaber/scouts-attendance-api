@@ -24,6 +24,7 @@ public static class DependencyInjection
         services.AddScoped<IDashboardService,      DashboardService>();
         services.AddScoped<IPendingExcuseService,    PendingExcuseService>();
         services.AddScoped<ITransferRequestService, TransferRequestService>();
+        services.AddScoped<INewYearService,          NewYearService>();
         return services;
     }
 }

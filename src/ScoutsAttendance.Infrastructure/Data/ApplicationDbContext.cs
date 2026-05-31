@@ -37,6 +37,10 @@ public class ApplicationDbContext : DbContext
     public DbSet<MemberTransferRequest>  TransferRequests  => Set<MemberTransferRequest>();
     public DbSet<MemberTransferArchive>  TransferArchives  => Set<MemberTransferArchive>();
 
+    // ── Yearly Archives ───────────────────────────────────────────────────────
+    public DbSet<YearlyArchive>       YearlyArchives       => Set<YearlyArchive>();
+    public DbSet<YearlyMemberArchive> YearlyMemberArchives => Set<YearlyMemberArchive>();
+
     protected override void OnModelCreating(ModelBuilder mb)
     {
         base.OnModelCreating(mb);
@@ -429,6 +433,35 @@ public class ApplicationDbContext : DbContext
                 .OnDelete(DeleteBehavior.SetNull);
         });
         mb.Entity<MemberBadge>().HasQueryFilter(e => !e.IsDeleted);
+
+        // ─── YearlyArchive ─────────────────────────────────────────────────────
+        mb.Entity<YearlyArchive>(e =>
+        {
+            e.ToTable("YearlyArchives");
+            e.HasIndex(a => a.ArchiveYear);
+            e.Property(a => a.ArchiveYear).HasMaxLength(20);
+            e.Property(a => a.ArchivedBy).HasMaxLength(200);
+        });
+        mb.Entity<YearlyArchive>().HasQueryFilter(e => !e.IsDeleted);
+
+        // ─── YearlyMemberArchive ───────────────────────────────────────────────
+        mb.Entity<YearlyMemberArchive>(e =>
+        {
+            e.ToTable("YearlyMemberArchives");
+            e.HasIndex(a => a.YearlyArchiveId);
+            e.HasIndex(a => a.MemberId);
+            e.HasIndex(a => a.GroupId);
+            e.Property(a => a.MemberName).HasMaxLength(200);
+            e.Property(a => a.GroupName).HasMaxLength(200);
+            e.Property(a => a.TroopName).HasMaxLength(200).IsRequired(false);
+            e.Property(a => a.AcademicGrade).HasMaxLength(100).IsRequired(false);
+            e.Property(a => a.TotalPointsAtYearEnd).HasColumnType("decimal(10,2)");
+            e.HasOne(a => a.YearlyArchive)
+                .WithMany(y => y.Members)
+                .HasForeignKey(a => a.YearlyArchiveId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+        mb.Entity<YearlyMemberArchive>().HasQueryFilter(e => !e.IsDeleted);
 
         // ─── MemberTransferArchive ─────────────────────────────────────────────
         mb.Entity<MemberTransferArchive>(e =>

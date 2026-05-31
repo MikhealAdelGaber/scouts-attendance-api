@@ -680,6 +680,56 @@ public static class DbSeeder
                     @"ALTER TABLE ""MemberTransferArchives"" ADD COLUMN IF NOT EXISTS ""TotalExcusesCount"" INTEGER NOT NULL DEFAULT 0");
             }
             catch { /* safe — column already exists */ }
+
+            // ── YearlyArchives table ──────────────────────────────────────────────
+            try
+            {
+                await context.Database.ExecuteSqlRawAsync(@"
+                    CREATE TABLE IF NOT EXISTS ""YearlyArchives"" (
+                        ""Id""           UUID        NOT NULL DEFAULT gen_random_uuid() PRIMARY KEY,
+                        ""ArchiveYear""  TEXT        NOT NULL DEFAULT '',
+                        ""ArchivedAt""   TIMESTAMPTZ NOT NULL DEFAULT now(),
+                        ""ArchivedBy""   TEXT        NOT NULL DEFAULT '',
+                        ""TotalMembers"" INTEGER     NOT NULL DEFAULT 0,
+                        ""TotalGroups""  INTEGER     NOT NULL DEFAULT 0,
+                        ""CreatedAt""    TIMESTAMPTZ NOT NULL DEFAULT now(),
+                        ""UpdatedAt""    TIMESTAMPTZ,
+                        ""IsDeleted""    BOOLEAN     NOT NULL DEFAULT false
+                    )");
+            }
+            catch { /* already exists */ }
+
+            try { await context.Database.ExecuteSqlRawAsync(@"CREATE INDEX IF NOT EXISTS ""IX_YearlyArchives_Year"" ON ""YearlyArchives"" (""ArchiveYear"")"); } catch { }
+
+            // ── YearlyMemberArchives table ────────────────────────────────────────
+            try
+            {
+                await context.Database.ExecuteSqlRawAsync(@"
+                    CREATE TABLE IF NOT EXISTS ""YearlyMemberArchives"" (
+                        ""Id""                    UUID          NOT NULL DEFAULT gen_random_uuid() PRIMARY KEY,
+                        ""YearlyArchiveId""        UUID          NOT NULL,
+                        ""MemberId""               UUID          NOT NULL,
+                        ""MemberName""             TEXT          NOT NULL DEFAULT '',
+                        ""GroupId""                UUID          NOT NULL,
+                        ""GroupName""              TEXT          NOT NULL DEFAULT '',
+                        ""TroopId""                UUID,
+                        ""TroopName""              TEXT,
+                        ""TotalPointsAtYearEnd""   DECIMAL(10,2) NOT NULL DEFAULT 0,
+                        ""TotalAttendanceCount""   INTEGER       NOT NULL DEFAULT 0,
+                        ""TotalEventsAttended""    INTEGER       NOT NULL DEFAULT 0,
+                        ""TotalExcusesCount""      INTEGER       NOT NULL DEFAULT 0,
+                        ""AcademicGrade""          TEXT,
+                        ""CreatedAt""              TIMESTAMPTZ   NOT NULL DEFAULT now(),
+                        ""UpdatedAt""              TIMESTAMPTZ,
+                        ""IsDeleted""              BOOLEAN       NOT NULL DEFAULT false,
+                        FOREIGN KEY (""YearlyArchiveId"") REFERENCES ""YearlyArchives""(""Id"") ON DELETE CASCADE
+                    )");
+            }
+            catch { /* already exists */ }
+
+            try { await context.Database.ExecuteSqlRawAsync(@"CREATE INDEX IF NOT EXISTS ""IX_YearlyMemberArchives_ArchiveId"" ON ""YearlyMemberArchives"" (""YearlyArchiveId"")"); } catch { }
+            try { await context.Database.ExecuteSqlRawAsync(@"CREATE INDEX IF NOT EXISTS ""IX_YearlyMemberArchives_MemberId""  ON ""YearlyMemberArchives"" (""MemberId"")"); } catch { }
+            try { await context.Database.ExecuteSqlRawAsync(@"CREATE INDEX IF NOT EXISTS ""IX_YearlyMemberArchives_GroupId""   ON ""YearlyMemberArchives"" (""GroupId"")"); } catch { }
         }
         else
         {

@@ -1,3 +1,4 @@
+using BCrypt.Net;
 using Microsoft.EntityFrameworkCore;
 using ScoutsAttendance.Application.Interfaces;
 using ScoutsAttendance.Domain.Entities;
@@ -41,6 +42,10 @@ public class UnitOfWork : IUnitOfWork
         // Transfer Requests
         TransferRequests = new GenericRepository<MemberTransferRequest>(context);
         TransferArchives = new GenericRepository<MemberTransferArchive>(context);
+
+        // Yearly Archives
+        YearlyArchives       = new GenericRepository<YearlyArchive>(context);
+        YearlyMemberArchives = new GenericRepository<YearlyMemberArchive>(context);
     }
 
     public IRepository<User>             Users             { get; }
@@ -72,6 +77,10 @@ public class UnitOfWork : IUnitOfWork
     // Transfer Requests
     public IRepository<MemberTransferRequest>  TransferRequests  { get; }
     public IRepository<MemberTransferArchive>  TransferArchives  { get; }
+
+    // Yearly Archives
+    public IRepository<YearlyArchive>       YearlyArchives       { get; }
+    public IRepository<YearlyMemberArchive> YearlyMemberArchives { get; }
 
     public async Task<int> SaveChangesAsync() => await _context.SaveChangesAsync();
 
@@ -218,6 +227,48 @@ public class UnitOfWork : IUnitOfWork
                 @"DELETE FROM [PendingExcuses] WHERE [MemberId] = {0}",
                 memberId);
         }
+    }
+
+    // ── Year-end global bulk deletes ──────────────────────────────────────────
+
+    /// <inheritdoc />
+    public async Task<int> DeleteAllMemberPointsGlobalAsync()
+    {
+        var isPostgres = _context.Database.ProviderName?
+            .Contains("Npgsql", StringComparison.OrdinalIgnoreCase) ?? false;
+        return isPostgres
+            ? await _context.Database.ExecuteSqlRawAsync(@"DELETE FROM ""MemberPoints""")
+            : await _context.Database.ExecuteSqlRawAsync(@"DELETE FROM [MemberPoints]");
+    }
+
+    /// <inheritdoc />
+    public async Task<int> DeleteAllMemberExcusesGlobalAsync()
+    {
+        var isPostgres = _context.Database.ProviderName?
+            .Contains("Npgsql", StringComparison.OrdinalIgnoreCase) ?? false;
+        return isPostgres
+            ? await _context.Database.ExecuteSqlRawAsync(@"DELETE FROM ""MemberExcuses""")
+            : await _context.Database.ExecuteSqlRawAsync(@"DELETE FROM [MemberExcuses]");
+    }
+
+    /// <inheritdoc />
+    public async Task<int> DeleteAllPendingExcusesGlobalAsync()
+    {
+        var isPostgres = _context.Database.ProviderName?
+            .Contains("Npgsql", StringComparison.OrdinalIgnoreCase) ?? false;
+        return isPostgres
+            ? await _context.Database.ExecuteSqlRawAsync(@"DELETE FROM ""PendingExcuses""")
+            : await _context.Database.ExecuteSqlRawAsync(@"DELETE FROM [PendingExcuses]");
+    }
+
+    /// <inheritdoc />
+    public async Task<bool> VerifyUserPasswordAsync(Guid userId, string plainPassword)
+    {
+        var user = await _context.Users
+            .IgnoreQueryFilters()
+            .FirstOrDefaultAsync(u => u.Id == userId && !u.IsDeleted);
+        if (user is null) return false;
+        return BCrypt.Net.BCrypt.Verify(plainPassword, user.PasswordHash);
     }
 
     public void Dispose() => _context.Dispose();

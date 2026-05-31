@@ -59,5 +59,6 @@ public class MemberTransferArchiveDto
     public decimal  TotalPointsAtTransfer { get; set; }
     public int      TotalAttendanceCount  { get; set; }
     public int      TotalEventsAttended   { get; set; }
+    public int      TotalExcusesCount     { get; set; }
     public DateTime ArchivedAt            { get; set; }
 }

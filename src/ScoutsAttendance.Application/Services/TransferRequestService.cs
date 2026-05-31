@@ -155,6 +155,9 @@ public class TransferRequestService : ITransferRequestService
                               a.Status == AttendanceStatus.Late    ||
                               a.Status == AttendanceStatus.TooLate));
 
+        var totalExcuses = await _uow.MemberExcuses.Query()
+            .CountAsync(e => e.MemberId == member.Id);
+
         var now = DateTime.UtcNow;
 
         // ── Steps 2-7: All inside a single transaction ─────────────────────────
@@ -173,6 +176,7 @@ public class TransferRequestService : ITransferRequestService
                 TotalPointsAtTransfer = totalPoints,
                 TotalAttendanceCount  = totalAttendance,
                 TotalEventsAttended   = totalEventsAttended,
+                TotalExcusesCount     = totalExcuses,
                 ArchivedAt            = now
             };
             await _uow.TransferArchives.AddAsync(archive);
@@ -185,20 +189,26 @@ public class TransferRequestService : ITransferRequestService
             // 4. Hard-delete all AttendanceRecords for this member.
             await _uow.DeleteMemberAttendanceRecordsAsync(member.Id);
 
-            // 5. Move member to new group and clear troop assignment.
+            // 5. Hard-delete all MemberExcuse records for this member.
+            await _uow.DeleteMemberExcusesAsync(member.Id);
+
+            // 6. Hard-delete all PendingExcuse requests for this member.
+            await _uow.DeleteMemberPendingExcusesAsync(member.Id);
+
+            // 8. Move member to new group and clear troop assignment.
             member.GroupId   = request.ToGroupId;
             member.TroopId   = null;
             member.UpdatedAt = now;
             _uow.Members.Update(member);
 
-            // 6. Mark request as approved.
+            // 9. Mark request as approved.
             request.Status     = TransferRequestStatus.Approved;
             request.ReviewedBy = _currentUser.Username ?? "unknown";
             request.ReviewedAt = now;
             request.UpdatedAt  = now;
             _uow.TransferRequests.Update(request);
 
-            // 7. Persist all tracked changes (archive + member + request).
+            // 10. Persist all tracked changes (archive + member + request).
             await _uow.SaveChangesAsync();
         });
 
@@ -275,6 +285,7 @@ public class TransferRequestService : ITransferRequestService
             TotalPointsAtTransfer = a.TotalPointsAtTransfer,
             TotalAttendanceCount  = a.TotalAttendanceCount,
             TotalEventsAttended   = a.TotalEventsAttended,
+            TotalExcusesCount     = a.TotalExcusesCount,
             ArchivedAt            = a.ArchivedAt
         });
     }

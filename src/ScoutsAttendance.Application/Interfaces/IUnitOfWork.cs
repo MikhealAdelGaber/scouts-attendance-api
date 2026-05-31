@@ -76,4 +76,18 @@ public interface IUnitOfWork : IDisposable
     /// Expects MemberPoints to have been deleted first (see <see cref="DeleteMemberPointsAsync"/>).
     /// </summary>
     Task<int> DeleteMemberAttendanceRecordsAsync(Guid memberId);
+
+    /// <summary>
+    /// Hard-deletes ALL MemberExcuse rows for <paramref name="memberId"/>.
+    /// Called during transfer approval so the member starts with no active excuses
+    /// in their new group.
+    /// </summary>
+    Task<int> DeleteMemberExcusesAsync(Guid memberId);
+
+    /// <summary>
+    /// Hard-deletes ALL PendingExcuse rows whose MemberId matches
+    /// <paramref name="memberId"/>.  Cleans up any submitted-but-not-yet-reviewed
+    /// excuse requests before the member joins their new group.
+    /// </summary>
+    Task<int> DeleteMemberPendingExcusesAsync(Guid memberId);
 }

@@ -671,6 +671,15 @@ public static class DbSeeder
             try { await context.Database.ExecuteSqlRawAsync(@"CREATE INDEX IF NOT EXISTS ""IX_TransferArchives_MemberId""    ON ""MemberTransferArchives"" (""MemberId"")"); } catch { }
             try { await context.Database.ExecuteSqlRawAsync(@"CREATE INDEX IF NOT EXISTS ""IX_TransferArchives_FromGroupId"" ON ""MemberTransferArchives"" (""FromGroupId"")"); } catch { }
             try { await context.Database.ExecuteSqlRawAsync(@"CREATE INDEX IF NOT EXISTS ""IX_TransferArchives_ToGroupId""   ON ""MemberTransferArchives"" (""ToGroupId"")"); } catch { }
+
+            // ── TotalExcusesCount column on MemberTransferArchives ────────────────
+            // Added after initial deployment — idempotent ADD COLUMN IF NOT EXISTS.
+            try
+            {
+                await context.Database.ExecuteSqlRawAsync(
+                    @"ALTER TABLE ""MemberTransferArchives"" ADD COLUMN IF NOT EXISTS ""TotalExcusesCount"" INTEGER NOT NULL DEFAULT 0");
+            }
+            catch { /* safe — column already exists */ }
         }
         else
         {

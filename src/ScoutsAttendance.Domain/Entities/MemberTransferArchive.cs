@@ -30,5 +30,8 @@ public class MemberTransferArchive : BaseEntity
     /// <summary>Attendance records where status was Present, Late, or TooLate.</summary>
     public int      TotalEventsAttended   { get; set; }
 
+    /// <summary>Number of MemberExcuse rows at the moment of transfer.</summary>
+    public int      TotalExcusesCount     { get; set; }
+
     public DateTime ArchivedAt            { get; set; } = DateTime.UtcNow;
 }

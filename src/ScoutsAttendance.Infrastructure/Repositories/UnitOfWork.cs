@@ -180,5 +180,45 @@ public class UnitOfWork : IUnitOfWork
         }
     }
 
+    /// <inheritdoc />
+    public async Task<int> DeleteMemberExcusesAsync(Guid memberId)
+    {
+        var isPostgres = _context.Database.ProviderName?
+            .Contains("Npgsql", StringComparison.OrdinalIgnoreCase) ?? false;
+
+        if (isPostgres)
+        {
+            return await _context.Database.ExecuteSqlRawAsync(
+                @"DELETE FROM ""MemberExcuses"" WHERE ""MemberId"" = {0}",
+                memberId);
+        }
+        else
+        {
+            return await _context.Database.ExecuteSqlRawAsync(
+                @"DELETE FROM [MemberExcuses] WHERE [MemberId] = {0}",
+                memberId);
+        }
+    }
+
+    /// <inheritdoc />
+    public async Task<int> DeleteMemberPendingExcusesAsync(Guid memberId)
+    {
+        var isPostgres = _context.Database.ProviderName?
+            .Contains("Npgsql", StringComparison.OrdinalIgnoreCase) ?? false;
+
+        if (isPostgres)
+        {
+            return await _context.Database.ExecuteSqlRawAsync(
+                @"DELETE FROM ""PendingExcuses"" WHERE ""MemberId"" = {0}",
+                memberId);
+        }
+        else
+        {
+            return await _context.Database.ExecuteSqlRawAsync(
+                @"DELETE FROM [PendingExcuses] WHERE [MemberId] = {0}",
+                memberId);
+        }
+    }
+
     public void Dispose() => _context.Dispose();
 }

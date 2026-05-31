@@ -590,10 +590,40 @@ public static class DbSeeder
                     @"ALTER TABLE ""MemberBadges"" ADD COLUMN IF NOT EXISTS ""TroopName"" TEXT");
             }
             catch { /* safe */ }
+
+            // ── Backfill TroopName for existing MemberBadges ──────────────────────
+            // Runs on every startup; no-op when all rows already have TroopName set.
+            // Copies the current Troop name into any MemberBadge row that was awarded
+            // before the TroopName column was added (i.e. TroopName IS NULL but TroopId
+            // IS NOT NULL and the Troop still exists).
+            try
+            {
+                await context.Database.ExecuteSqlRawAsync(@"
+                    UPDATE ""MemberBadges"" mb
+                    SET    ""TroopName"" = t.""Name""
+                    FROM   ""Troops"" t
+                    WHERE  mb.""TroopId"" = t.""Id""
+                      AND  mb.""TroopName"" IS NULL
+                      AND  mb.""IsDeleted"" = FALSE");
+            }
+            catch { /* safe — runs only when both tables exist */ }
         }
         else
         {
             await context.Database.MigrateAsync();
+
+            // Backfill TroopName for SQL Server (same logic, T-SQL syntax)
+            try
+            {
+                await context.Database.ExecuteSqlRawAsync(@"
+                    UPDATE mb
+                    SET    mb.[TroopName] = t.[Name]
+                    FROM   [MemberBadges] mb
+                    JOIN   [Troops] t ON mb.[TroopId] = t.[Id]
+                    WHERE  mb.[TroopName] IS NULL
+                      AND  mb.[IsDeleted] = 0");
+            }
+            catch { /* safe */ }
         }
 
         // ── Default Badge Catalog ─────────────────────────────────────────────────

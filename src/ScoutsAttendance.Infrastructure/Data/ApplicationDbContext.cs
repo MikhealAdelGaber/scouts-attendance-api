@@ -33,6 +33,9 @@ public class ApplicationDbContext : DbContext
     public DbSet<Badge>       Badges       => Set<Badge>();
     public DbSet<MemberBadge> MemberBadges => Set<MemberBadge>();
 
+    // ── Transfer Requests ─────────────────────────────────────────────────────
+    public DbSet<MemberTransferRequest> TransferRequests => Set<MemberTransferRequest>();
+
     protected override void OnModelCreating(ModelBuilder mb)
     {
         base.OnModelCreating(mb);
@@ -367,6 +370,36 @@ public class ApplicationDbContext : DbContext
             e.HasIndex(b => b.Category);
         });
         mb.Entity<Badge>().HasQueryFilter(e => !e.IsDeleted);
+
+        // ─── MemberTransferRequest ─────────────────────────────────────────────
+        mb.Entity<MemberTransferRequest>(e =>
+        {
+            e.HasIndex(r => r.MemberId);
+            e.HasIndex(r => r.FromGroupId);
+            e.HasIndex(r => r.ToGroupId);
+            e.HasIndex(r => r.Status);
+            e.Property(r => r.Status).HasConversion<int>();
+            e.Property(r => r.MemberName).HasMaxLength(200);
+            e.Property(r => r.FromGroupName).HasMaxLength(200);
+            e.Property(r => r.ToGroupName).HasMaxLength(200);
+            e.Property(r => r.RequestedBy).HasMaxLength(200);
+            e.Property(r => r.ReviewedBy).HasMaxLength(200).IsRequired(false);
+            e.Property(r => r.RejectionReason).HasMaxLength(500).IsRequired(false);
+            e.Property(r => r.Notes).HasMaxLength(500).IsRequired(false);
+            e.HasOne(r => r.Member)
+                .WithMany()
+                .HasForeignKey(r => r.MemberId)
+                .OnDelete(DeleteBehavior.Restrict);
+            e.HasOne(r => r.FromGroup)
+                .WithMany()
+                .HasForeignKey(r => r.FromGroupId)
+                .OnDelete(DeleteBehavior.Restrict);
+            e.HasOne(r => r.ToGroup)
+                .WithMany()
+                .HasForeignKey(r => r.ToGroupId)
+                .OnDelete(DeleteBehavior.Restrict);
+        });
+        mb.Entity<MemberTransferRequest>().HasQueryFilter(e => !e.IsDeleted);
 
         // ─── MemberBadge ───────────────────────────────────────────────────────
         mb.Entity<MemberBadge>(e =>

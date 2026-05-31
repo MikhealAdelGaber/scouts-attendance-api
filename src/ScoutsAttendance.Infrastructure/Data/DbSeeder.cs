@@ -607,6 +607,40 @@ public static class DbSeeder
                       AND  mb.""IsDeleted"" = FALSE");
             }
             catch { /* safe — runs only when both tables exist */ }
+
+            // ── MemberTransferRequests table ──────────────────────────────────────
+            try
+            {
+                await context.Database.ExecuteSqlRawAsync(@"
+                    CREATE TABLE IF NOT EXISTS ""MemberTransferRequests"" (
+                        ""Id""              UUID        NOT NULL DEFAULT gen_random_uuid() PRIMARY KEY,
+                        ""MemberId""        UUID        NOT NULL,
+                        ""MemberName""      TEXT        NOT NULL DEFAULT '',
+                        ""FromGroupId""     UUID        NOT NULL,
+                        ""FromGroupName""   TEXT        NOT NULL DEFAULT '',
+                        ""ToGroupId""       UUID        NOT NULL,
+                        ""ToGroupName""     TEXT        NOT NULL DEFAULT '',
+                        ""RequestedBy""     TEXT        NOT NULL DEFAULT '',
+                        ""RequestedAt""     TIMESTAMPTZ NOT NULL DEFAULT now(),
+                        ""Status""          INTEGER     NOT NULL DEFAULT 0,
+                        ""ReviewedBy""      TEXT,
+                        ""ReviewedAt""      TIMESTAMPTZ,
+                        ""RejectionReason"" TEXT,
+                        ""Notes""           TEXT,
+                        ""CreatedAt""       TIMESTAMPTZ NOT NULL DEFAULT now(),
+                        ""UpdatedAt""       TIMESTAMPTZ,
+                        ""IsDeleted""       BOOLEAN     NOT NULL DEFAULT false,
+                        FOREIGN KEY (""MemberId"")    REFERENCES ""Members""(""Id"") ON DELETE RESTRICT,
+                        FOREIGN KEY (""FromGroupId"") REFERENCES ""Groups""(""Id"")  ON DELETE RESTRICT,
+                        FOREIGN KEY (""ToGroupId"")   REFERENCES ""Groups""(""Id"")  ON DELETE RESTRICT
+                    )");
+            }
+            catch { /* already exists */ }
+
+            try { await context.Database.ExecuteSqlRawAsync(@"CREATE INDEX IF NOT EXISTS ""IX_TransferReqs_MemberId""    ON ""MemberTransferRequests"" (""MemberId"")"); } catch { }
+            try { await context.Database.ExecuteSqlRawAsync(@"CREATE INDEX IF NOT EXISTS ""IX_TransferReqs_FromGroupId"" ON ""MemberTransferRequests"" (""FromGroupId"")"); } catch { }
+            try { await context.Database.ExecuteSqlRawAsync(@"CREATE INDEX IF NOT EXISTS ""IX_TransferReqs_ToGroupId""   ON ""MemberTransferRequests"" (""ToGroupId"")"); } catch { }
+            try { await context.Database.ExecuteSqlRawAsync(@"CREATE INDEX IF NOT EXISTS ""IX_TransferReqs_Status""      ON ""MemberTransferRequests"" (""Status"")"); } catch { }
         }
         else
         {

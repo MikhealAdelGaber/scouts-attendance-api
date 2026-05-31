@@ -37,6 +37,9 @@ public class UnitOfWork : IUnitOfWork
         // Badges
         Badges       = new GenericRepository<Badge>(context);
         MemberBadges = new GenericRepository<MemberBadge>(context);
+
+        // Transfer Requests
+        TransferRequests = new GenericRepository<MemberTransferRequest>(context);
     }
 
     public IRepository<User>             Users             { get; }
@@ -64,6 +67,9 @@ public class UnitOfWork : IUnitOfWork
     // Badges
     public IRepository<Badge>       Badges       { get; }
     public IRepository<MemberBadge> MemberBadges { get; }
+
+    // Transfer Requests
+    public IRepository<MemberTransferRequest> TransferRequests { get; }
 
     public async Task<int> SaveChangesAsync() => await _context.SaveChangesAsync();
 

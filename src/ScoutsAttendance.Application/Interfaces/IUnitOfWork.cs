@@ -30,6 +30,9 @@ public interface IUnitOfWork : IDisposable
     IRepository<Badge>       Badges       { get; }
     IRepository<MemberBadge> MemberBadges { get; }
 
+    // ── Transfer Requests ─────────────────────────────────────────────────────
+    IRepository<MemberTransferRequest> TransferRequests { get; }
+
     Task<int> SaveChangesAsync();
 
     /// <summary>

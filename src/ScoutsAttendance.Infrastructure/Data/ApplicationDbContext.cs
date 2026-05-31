@@ -34,7 +34,8 @@ public class ApplicationDbContext : DbContext
     public DbSet<MemberBadge> MemberBadges => Set<MemberBadge>();
 
     // ── Transfer Requests ─────────────────────────────────────────────────────
-    public DbSet<MemberTransferRequest> TransferRequests => Set<MemberTransferRequest>();
+    public DbSet<MemberTransferRequest>  TransferRequests  => Set<MemberTransferRequest>();
+    public DbSet<MemberTransferArchive>  TransferArchives  => Set<MemberTransferArchive>();
 
     protected override void OnModelCreating(ModelBuilder mb)
     {
@@ -428,5 +429,19 @@ public class ApplicationDbContext : DbContext
                 .OnDelete(DeleteBehavior.SetNull);
         });
         mb.Entity<MemberBadge>().HasQueryFilter(e => !e.IsDeleted);
+
+        // ─── MemberTransferArchive ─────────────────────────────────────────────
+        mb.Entity<MemberTransferArchive>(e =>
+        {
+            e.ToTable("MemberTransferArchives");
+            e.HasIndex(a => a.MemberId);
+            e.HasIndex(a => a.FromGroupId);
+            e.HasIndex(a => a.ToGroupId);
+            e.Property(a => a.MemberName).HasMaxLength(200);
+            e.Property(a => a.FromGroupName).HasMaxLength(200);
+            e.Property(a => a.ToGroupName).HasMaxLength(200);
+            e.Property(a => a.TotalPointsAtTransfer).HasColumnType("decimal(10,2)");
+        });
+        mb.Entity<MemberTransferArchive>().HasQueryFilter(e => !e.IsDeleted);
     }
 }

@@ -22,6 +22,9 @@ public interface ITransferRequestService
     /// <summary>Approve + execute the transfer (SystemAdmin only).</summary>
     Task<(bool Ok, string Error)> ApproveAsync(Guid id);
 
+    /// <summary>Previous-group archive snapshots for a member (read-only history).</summary>
+    Task<IEnumerable<MemberTransferArchiveDto>> GetMemberArchiveAsync(Guid memberId);
+
     /// <summary>Reject with an optional reason (SystemAdmin only).</summary>
     Task<(bool Ok, string Error)> RejectAsync(Guid id, ReviewTransferRequestDto dto);
 
@@ -129,28 +132,73 @@ public class TransferRequestService : ITransferRequestService
         var request = await _uow.TransferRequests.Query()
             .FirstOrDefaultAsync(r => r.Id == id && !r.IsDeleted);
 
-        if (request is null)           return (false, "Transfer request not found.");
+        if (request is null)
+            return (false, "Transfer request not found.");
         if (request.Status != TransferRequestStatus.Pending)
             return (false, $"Request is already {request.Status.ToString().ToLower()}.");
 
-        // Perform the actual transfer: change GroupId, clear TroopId (troop belongs to the old group)
         var member = await _uow.Members.GetByIdAsync(request.MemberId);
         if (member is null || member.IsDeleted)
             return (false, "Member no longer exists.");
 
+        // ── Step 1: Snapshot stats BEFORE any deletion ─────────────────────────
+        var totalPoints = await _uow.MemberPoints.Query()
+            .Where(p => p.MemberId == member.Id)
+            .SumAsync(p => (decimal?)p.Points) ?? 0m;
+
+        var totalAttendance = await _uow.AttendanceRecords.Query()
+            .CountAsync(a => a.MemberId == member.Id);
+
+        var totalEventsAttended = await _uow.AttendanceRecords.Query()
+            .CountAsync(a => a.MemberId == member.Id &&
+                             (a.Status == AttendanceStatus.Present ||
+                              a.Status == AttendanceStatus.Late    ||
+                              a.Status == AttendanceStatus.TooLate));
+
+        var now = DateTime.UtcNow;
+
+        // ── Steps 2-7: All inside a single transaction ─────────────────────────
         await _uow.ExecuteInTransactionAsync(async () =>
         {
+            // 2. Archive snapshot of old-group stats
+            var archive = new MemberTransferArchive
+            {
+                MemberId              = member.Id,
+                MemberName            = member.FullName,
+                FromGroupId           = request.FromGroupId,
+                FromGroupName         = request.FromGroupName,
+                ToGroupId             = request.ToGroupId,
+                ToGroupName           = request.ToGroupName,
+                TransferDate          = now,
+                TotalPointsAtTransfer = totalPoints,
+                TotalAttendanceCount  = totalAttendance,
+                TotalEventsAttended   = totalEventsAttended,
+                ArchivedAt            = now
+            };
+            await _uow.TransferArchives.AddAsync(archive);
+
+            // 3. Hard-delete all MemberPoints for this member.
+            //    Delete points BEFORE attendance records because of the FK
+            //    MemberPoints.AttendanceRecordId → AttendanceRecords.Id.
+            await _uow.DeleteMemberPointsAsync(member.Id);
+
+            // 4. Hard-delete all AttendanceRecords for this member.
+            await _uow.DeleteMemberAttendanceRecordsAsync(member.Id);
+
+            // 5. Move member to new group and clear troop assignment.
             member.GroupId   = request.ToGroupId;
-            member.TroopId   = null;                        // clear troop — belongs to old group
-            member.UpdatedAt = DateTime.UtcNow;
+            member.TroopId   = null;
+            member.UpdatedAt = now;
             _uow.Members.Update(member);
 
+            // 6. Mark request as approved.
             request.Status     = TransferRequestStatus.Approved;
             request.ReviewedBy = _currentUser.Username ?? "unknown";
-            request.ReviewedAt = DateTime.UtcNow;
-            request.UpdatedAt  = DateTime.UtcNow;
+            request.ReviewedAt = now;
+            request.UpdatedAt  = now;
             _uow.TransferRequests.Update(request);
 
+            // 7. Persist all tracked changes (archive + member + request).
             await _uow.SaveChangesAsync();
         });
 
@@ -203,6 +251,32 @@ public class TransferRequestService : ITransferRequestService
         _uow.TransferRequests.Update(request);
         await _uow.SaveChangesAsync();
         return (true, string.Empty);
+    }
+
+    // ── Archive (previous-group history) ────────────────────────────────────
+
+    public async Task<IEnumerable<MemberTransferArchiveDto>> GetMemberArchiveAsync(Guid memberId)
+    {
+        var list = await _uow.TransferArchives.Query()
+            .Where(a => a.MemberId == memberId)
+            .OrderByDescending(a => a.TransferDate)
+            .ToListAsync();
+
+        return list.Select(a => new MemberTransferArchiveDto
+        {
+            Id                    = a.Id,
+            MemberId              = a.MemberId,
+            MemberName            = a.MemberName,
+            FromGroupId           = a.FromGroupId,
+            FromGroupName         = a.FromGroupName,
+            ToGroupId             = a.ToGroupId,
+            ToGroupName           = a.ToGroupName,
+            TransferDate          = a.TransferDate,
+            TotalPointsAtTransfer = a.TotalPointsAtTransfer,
+            TotalAttendanceCount  = a.TotalAttendanceCount,
+            TotalEventsAttended   = a.TotalEventsAttended,
+            ArchivedAt            = a.ArchivedAt
+        });
     }
 
     // ── History ───────────────────────────────────────────────────────────────

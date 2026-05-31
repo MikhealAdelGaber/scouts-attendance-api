@@ -641,6 +641,36 @@ public static class DbSeeder
             try { await context.Database.ExecuteSqlRawAsync(@"CREATE INDEX IF NOT EXISTS ""IX_TransferReqs_FromGroupId"" ON ""MemberTransferRequests"" (""FromGroupId"")"); } catch { }
             try { await context.Database.ExecuteSqlRawAsync(@"CREATE INDEX IF NOT EXISTS ""IX_TransferReqs_ToGroupId""   ON ""MemberTransferRequests"" (""ToGroupId"")"); } catch { }
             try { await context.Database.ExecuteSqlRawAsync(@"CREATE INDEX IF NOT EXISTS ""IX_TransferReqs_Status""      ON ""MemberTransferRequests"" (""Status"")"); } catch { }
+
+            // ── MemberTransferArchives table ──────────────────────────────────────
+            // Created on every startup; IF NOT EXISTS makes it idempotent.
+            // EF Core maps this via e.ToTable("MemberTransferArchives") in OnModelCreating.
+            try
+            {
+                await context.Database.ExecuteSqlRawAsync(@"
+                    CREATE TABLE IF NOT EXISTS ""MemberTransferArchives"" (
+                        ""Id""                    UUID          NOT NULL DEFAULT gen_random_uuid() PRIMARY KEY,
+                        ""MemberId""              UUID          NOT NULL,
+                        ""MemberName""            TEXT          NOT NULL DEFAULT '',
+                        ""FromGroupId""           UUID          NOT NULL,
+                        ""FromGroupName""         TEXT          NOT NULL DEFAULT '',
+                        ""ToGroupId""             UUID          NOT NULL,
+                        ""ToGroupName""           TEXT          NOT NULL DEFAULT '',
+                        ""TransferDate""          TIMESTAMPTZ   NOT NULL DEFAULT now(),
+                        ""TotalPointsAtTransfer"" DECIMAL(10,2) NOT NULL DEFAULT 0,
+                        ""TotalAttendanceCount""  INTEGER       NOT NULL DEFAULT 0,
+                        ""TotalEventsAttended""   INTEGER       NOT NULL DEFAULT 0,
+                        ""ArchivedAt""            TIMESTAMPTZ   NOT NULL DEFAULT now(),
+                        ""CreatedAt""             TIMESTAMPTZ   NOT NULL DEFAULT now(),
+                        ""UpdatedAt""             TIMESTAMPTZ,
+                        ""IsDeleted""             BOOLEAN       NOT NULL DEFAULT false
+                    )");
+            }
+            catch { /* already exists */ }
+
+            try { await context.Database.ExecuteSqlRawAsync(@"CREATE INDEX IF NOT EXISTS ""IX_TransferArchives_MemberId""    ON ""MemberTransferArchives"" (""MemberId"")"); } catch { }
+            try { await context.Database.ExecuteSqlRawAsync(@"CREATE INDEX IF NOT EXISTS ""IX_TransferArchives_FromGroupId"" ON ""MemberTransferArchives"" (""FromGroupId"")"); } catch { }
+            try { await context.Database.ExecuteSqlRawAsync(@"CREATE INDEX IF NOT EXISTS ""IX_TransferArchives_ToGroupId""   ON ""MemberTransferArchives"" (""ToGroupId"")"); } catch { }
         }
         else
         {

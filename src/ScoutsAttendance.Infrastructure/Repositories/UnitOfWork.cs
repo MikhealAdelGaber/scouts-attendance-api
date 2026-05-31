@@ -40,6 +40,7 @@ public class UnitOfWork : IUnitOfWork
 
         // Transfer Requests
         TransferRequests = new GenericRepository<MemberTransferRequest>(context);
+        TransferArchives = new GenericRepository<MemberTransferArchive>(context);
     }
 
     public IRepository<User>             Users             { get; }
@@ -69,7 +70,8 @@ public class UnitOfWork : IUnitOfWork
     public IRepository<MemberBadge> MemberBadges { get; }
 
     // Transfer Requests
-    public IRepository<MemberTransferRequest> TransferRequests { get; }
+    public IRepository<MemberTransferRequest>  TransferRequests  { get; }
+    public IRepository<MemberTransferArchive>  TransferArchives  { get; }
 
     public async Task<int> SaveChangesAsync() => await _context.SaveChangesAsync();
 
@@ -135,6 +137,46 @@ public class UnitOfWork : IUnitOfWork
         {
             await tx.RollbackAsync();
             throw;
+        }
+    }
+
+    /// <inheritdoc />
+    public async Task<int> DeleteMemberPointsAsync(Guid memberId)
+    {
+        var isPostgres = _context.Database.ProviderName?
+            .Contains("Npgsql", StringComparison.OrdinalIgnoreCase) ?? false;
+
+        if (isPostgres)
+        {
+            return await _context.Database.ExecuteSqlRawAsync(
+                @"DELETE FROM ""MemberPoints"" WHERE ""MemberId"" = {0}",
+                memberId);
+        }
+        else
+        {
+            return await _context.Database.ExecuteSqlRawAsync(
+                @"DELETE FROM [MemberPoints] WHERE [MemberId] = {0}",
+                memberId);
+        }
+    }
+
+    /// <inheritdoc />
+    public async Task<int> DeleteMemberAttendanceRecordsAsync(Guid memberId)
+    {
+        var isPostgres = _context.Database.ProviderName?
+            .Contains("Npgsql", StringComparison.OrdinalIgnoreCase) ?? false;
+
+        if (isPostgres)
+        {
+            return await _context.Database.ExecuteSqlRawAsync(
+                @"DELETE FROM ""AttendanceRecords"" WHERE ""MemberId"" = {0}",
+                memberId);
+        }
+        else
+        {
+            return await _context.Database.ExecuteSqlRawAsync(
+                @"DELETE FROM [AttendanceRecords] WHERE [MemberId] = {0}",
+                memberId);
         }
     }
 

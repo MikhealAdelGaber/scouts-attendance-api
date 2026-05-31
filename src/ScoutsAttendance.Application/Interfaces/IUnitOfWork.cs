@@ -31,7 +31,8 @@ public interface IUnitOfWork : IDisposable
     IRepository<MemberBadge> MemberBadges { get; }
 
     // ── Transfer Requests ─────────────────────────────────────────────────────
-    IRepository<MemberTransferRequest> TransferRequests { get; }
+    IRepository<MemberTransferRequest>  TransferRequests  { get; }
+    IRepository<MemberTransferArchive>  TransferArchives  { get; }
 
     Task<int> SaveChangesAsync();
 
@@ -58,4 +59,21 @@ public interface IUnitOfWork : IDisposable
     /// cannot restrict their member visibility after the troop is deleted.
     /// </summary>
     Task<int> UnassignUsersFromTroopAsync(Guid troopId, DateTime updatedAt);
+
+    /// <summary>
+    /// Hard-deletes ALL MemberPoints rows for <paramref name="memberId"/>
+    /// using a single raw SQL DELETE.  Called during transfer approval to reset
+    /// the member's score before they join their new group.
+    /// MemberPoints MUST be deleted BEFORE AttendanceRecords because of the FK
+    /// MemberPoints.AttendanceRecordId → AttendanceRecords.Id.
+    /// </summary>
+    Task<int> DeleteMemberPointsAsync(Guid memberId);
+
+    /// <summary>
+    /// Hard-deletes ALL AttendanceRecord rows for <paramref name="memberId"/>
+    /// using a single raw SQL DELETE.  Called during transfer approval to give
+    /// the member a clean attendance slate in their new group.
+    /// Expects MemberPoints to have been deleted first (see <see cref="DeleteMemberPointsAsync"/>).
+    /// </summary>
+    Task<int> DeleteMemberAttendanceRecordsAsync(Guid memberId);
 }

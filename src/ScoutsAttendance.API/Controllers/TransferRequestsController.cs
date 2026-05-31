@@ -130,4 +130,18 @@ public class TransferRequestsController : ControllerBase
         var count = await _service.GetPendingCountAsync();
         return Ok(ApiResponse<int>.Ok(count));
     }
+
+    // ── Transfer archive (previous-group history) ─────────────────────────────
+
+    /// <summary>
+    /// GET /api/members/{memberId}/transfer-archive — archived group snapshots for a member.
+    /// Read-only. Returns snapshots created at each transfer-approval, ordered newest first.
+    /// </summary>
+    [HttpGet("/api/members/{memberId:guid}/transfer-archive")]
+    [Authorize(Roles = "SystemAdmin,GroupLeader")]
+    public async Task<ActionResult<ApiResponse<IEnumerable<MemberTransferArchiveDto>>>> GetMemberArchive(Guid memberId)
+    {
+        var result = await _service.GetMemberArchiveAsync(memberId);
+        return Ok(ApiResponse<IEnumerable<MemberTransferArchiveDto>>.Ok(result));
+    }
 }

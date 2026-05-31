@@ -29,6 +29,10 @@ public class ApplicationDbContext : DbContext
     public DbSet<TripAttendanceRecord> TripAttendanceRecords => Set<TripAttendanceRecord>();
     public DbSet<BookingPayment>       BookingPayments       => Set<BookingPayment>();
 
+    // ── Badges ────────────────────────────────────────────────────────────────
+    public DbSet<Badge>       Badges       => Set<Badge>();
+    public DbSet<MemberBadge> MemberBadges => Set<MemberBadge>();
+
     protected override void OnModelCreating(ModelBuilder mb)
     {
         base.OnModelCreating(mb);
@@ -353,5 +357,34 @@ public class ApplicationDbContext : DbContext
                 .OnDelete(DeleteBehavior.Cascade);
         });
         mb.Entity<BookingPayment>().HasQueryFilter(e => !e.IsDeleted);
+
+        // ─── Badge ─────────────────────────────────────────────────────────────
+        mb.Entity<Badge>(e =>
+        {
+            e.HasIndex(b => b.Name);
+            e.HasIndex(b => b.Category);
+        });
+        mb.Entity<Badge>().HasQueryFilter(e => !e.IsDeleted);
+
+        // ─── MemberBadge ───────────────────────────────────────────────────────
+        mb.Entity<MemberBadge>(e =>
+        {
+            e.HasIndex(mb => mb.MemberId);
+            e.HasIndex(mb => mb.BadgeId);
+            e.HasOne(mb => mb.Member)
+                .WithMany()
+                .HasForeignKey(mb => mb.MemberId)
+                .OnDelete(DeleteBehavior.Cascade);
+            e.HasOne(mb => mb.Badge)
+                .WithMany(b => b.MemberBadges)
+                .HasForeignKey(mb => mb.BadgeId)
+                .OnDelete(DeleteBehavior.Restrict);
+            e.HasOne(mb => mb.Troop)
+                .WithMany()
+                .HasForeignKey(mb => mb.TroopId)
+                .IsRequired(false)
+                .OnDelete(DeleteBehavior.SetNull);
+        });
+        mb.Entity<MemberBadge>().HasQueryFilter(e => !e.IsDeleted);
     }
 }

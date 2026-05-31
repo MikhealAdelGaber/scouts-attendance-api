@@ -26,6 +26,10 @@ public interface IUnitOfWork : IDisposable
     IRepository<TripAttendanceRecord> TripAttendanceRecords { get; }
     IRepository<BookingPayment>       BookingPayments       { get; }
 
+    // ── Badges ────────────────────────────────────────────────────────────────
+    IRepository<Badge>       Badges       { get; }
+    IRepository<MemberBadge> MemberBadges { get; }
+
     Task<int> SaveChangesAsync();
 
     /// <summary>

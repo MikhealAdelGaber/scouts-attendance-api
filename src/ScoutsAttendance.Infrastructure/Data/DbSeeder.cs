@@ -531,11 +531,78 @@ public static class DbSeeder
 
             // Indexes for BookingPayments
             try { await context.Database.ExecuteSqlRawAsync(@"CREATE INDEX IF NOT EXISTS ""IX_BookingPayments_BookingId"" ON ""BookingPayments"" (""BookingId"")"); } catch { }
+
+            // ── Badges catalog table ──────────────────────────────────────────────
+            try
+            {
+                await context.Database.ExecuteSqlRawAsync(@"
+                    CREATE TABLE IF NOT EXISTS ""Badges"" (
+                        ""Id""          UUID        NOT NULL DEFAULT gen_random_uuid() PRIMARY KEY,
+                        ""Name""        TEXT        NOT NULL DEFAULT '',
+                        ""Description"" TEXT,
+                        ""Category""    TEXT,
+                        ""CreatedAt""   TIMESTAMPTZ NOT NULL DEFAULT now(),
+                        ""UpdatedAt""   TIMESTAMPTZ,
+                        ""IsDeleted""   BOOLEAN     NOT NULL DEFAULT false
+                    )");
+            }
+            catch { /* already exists */ }
+
+            // ── MemberBadges table ────────────────────────────────────────────────
+            try
+            {
+                await context.Database.ExecuteSqlRawAsync(@"
+                    CREATE TABLE IF NOT EXISTS ""MemberBadges"" (
+                        ""Id""          UUID        NOT NULL DEFAULT gen_random_uuid() PRIMARY KEY,
+                        ""MemberId""    UUID        NOT NULL,
+                        ""BadgeId""     UUID        NOT NULL,
+                        ""AwardedDate"" TIMESTAMPTZ NOT NULL DEFAULT now(),
+                        ""TroopId""     UUID,
+                        ""AwardedBy""   TEXT        NOT NULL DEFAULT '',
+                        ""Notes""       TEXT,
+                        ""CreatedAt""   TIMESTAMPTZ NOT NULL DEFAULT now(),
+                        ""UpdatedAt""   TIMESTAMPTZ,
+                        ""IsDeleted""   BOOLEAN     NOT NULL DEFAULT false,
+                        FOREIGN KEY (""MemberId"") REFERENCES ""Members""(""Id"") ON DELETE CASCADE,
+                        FOREIGN KEY (""BadgeId"")  REFERENCES ""Badges""(""Id"")  ON DELETE RESTRICT,
+                        FOREIGN KEY (""TroopId"")  REFERENCES ""Troops""(""Id"")  ON DELETE SET NULL
+                    )");
+            }
+            catch { /* already exists */ }
+
+            try { await context.Database.ExecuteSqlRawAsync(@"CREATE INDEX IF NOT EXISTS ""IX_Badges_Name""          ON ""Badges"" (""Name"")"); } catch { }
+            try { await context.Database.ExecuteSqlRawAsync(@"CREATE INDEX IF NOT EXISTS ""IX_Badges_Category""      ON ""Badges"" (""Category"")"); } catch { }
+            try { await context.Database.ExecuteSqlRawAsync(@"CREATE INDEX IF NOT EXISTS ""IX_MemberBadges_MemberId"" ON ""MemberBadges"" (""MemberId"")"); } catch { }
+            try { await context.Database.ExecuteSqlRawAsync(@"CREATE INDEX IF NOT EXISTS ""IX_MemberBadges_BadgeId""  ON ""MemberBadges"" (""BadgeId"")"); } catch { }
         }
         else
         {
             await context.Database.MigrateAsync();
         }
+
+        // ── Default Badge Catalog ─────────────────────────────────────────────────
+        // Runs on every startup, but only inserts when the table is empty.
+        // Uses IgnoreQueryFilters() so soft-deleted badges don't cause a re-seed.
+        try
+        {
+            if (!await context.Badges.IgnoreQueryFilters().AnyAsync())
+            {
+                var defaultBadges = new[]
+                {
+                    new Badge { Name = "First Aid",        Category = "Skills",    Description = "Demonstrates proficiency in basic first aid and emergency response" },
+                    new Badge { Name = "Camping",          Category = "Skills",    Description = "Successfully completes a camping expedition with proper outdoor skills" },
+                    new Badge { Name = "Navigation",       Category = "Skills",    Description = "Proficient in map reading, compass use, and wilderness navigation" },
+                    new Badge { Name = "Leadership",       Category = "Skills",    Description = "Demonstrates leadership qualities and guides fellow scouts effectively" },
+                    new Badge { Name = "Community Service",Category = "Community", Description = "Completes significant volunteer work benefiting the local community" },
+                    new Badge { Name = "Sports",           Category = "Sports",    Description = "Shows excellence and sportsmanship in physical activities and team sports" },
+                    new Badge { Name = "Cooking",          Category = "Skills",    Description = "Prepares nutritious meals and demonstrates safe food handling practices" },
+                    new Badge { Name = "Communication",    Category = "Skills",    Description = "Excels in verbal, written, and non-verbal communication skills" },
+                };
+                await context.Badges.AddRangeAsync(defaultBadges);
+                await context.SaveChangesAsync();
+            }
+        }
+        catch { /* safe — badges table may not exist yet on very old deployments */ }
 
         if (await context.Users.AnyAsync()) return;
 

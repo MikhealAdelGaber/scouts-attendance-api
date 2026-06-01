@@ -66,6 +66,8 @@ public class TripExportService : ITripExportService
             .Include(t => t.Bookings)
                 .ThenInclude(b => b.Member)
                     .ThenInclude(m => m!.Troop)
+            .Include(t => t.Bookings)
+                .ThenInclude(b => b.Payments)
             .FirstOrDefaultAsync(t => t.Id == tripId && !t.IsDeleted)
             ?? throw new InvalidOperationException("Trip not found.");
 
@@ -100,9 +102,9 @@ public class TripExportService : ITripExportService
         using var wb = new XLWorkbook();
 
         BuildInfoSheet(wb, trip, confirmed, waiting);
-        BuildBookingsSheet(wb, "Confirmed Bookings", confirmed);
+        BuildBookingsSheet(wb, "Confirmed Bookings", confirmed, trip.AllowInstallments);
         if (waiting.Any())
-            BuildBookingsSheet(wb, "Waiting List", waiting);
+            BuildBookingsSheet(wb, "Waiting List", waiting, trip.AllowInstallments);
         if (attendance.Any())
             BuildAttendanceSheet(wb, attendance, trip);
 
@@ -130,7 +132,9 @@ public class TripExportService : ITripExportService
         ws.Range(1, 1, 1, 2).Merge();
 
         var totalExpected = confirmed.Sum(b => b.AmountDue);
-        var totalPaid     = confirmed.Where(b => b.PaidAt.HasValue).Sum(b => b.AmountDue);
+        var totalPaid     = trip.AllowInstallments
+            ? confirmed.Sum(b => b.Payments.Where(p => !p.IsDeleted).Sum(p => p.AmountPaid))
+            : confirmed.Where(b => b.PaidAt.HasValue).Sum(b => b.AmountDue);
 
         var rows = new List<(string Label, string Value)>
         {
@@ -171,7 +175,7 @@ public class TripExportService : ITripExportService
     // ── Sheet 2 / 3: Bookings ─────────────────────────────────────────────────
 
     private static void BuildBookingsSheet(XLWorkbook wb, string sheetName,
-        List<TripBooking> bookings)
+        List<TripBooking> bookings, bool allowInstallments)
     {
         var ws = wb.Worksheets.Add(sheetName);
 
@@ -211,9 +215,17 @@ public class TripExportService : ITripExportService
             ws.Cell(row, 6).Value = (double)b.AmountDue;
             ws.Cell(row, 6).Style.NumberFormat.Format = "#,##0";
 
-            ws.Cell(row, 7).Value = b.PaidAt.HasValue ? "Paid" : "Unpaid";
-            ws.Cell(row, 7).Style.Fill.BackgroundColor = b.PaidAt.HasValue
-                ? XLColor.FromHtml(GreenBg) : XLColor.FromHtml(RedBg);
+            decimal bPaid = allowInstallments
+                ? b.Payments.Where(p => !p.IsDeleted).Sum(p => p.AmountPaid)
+                : (b.PaidAt.HasValue ? b.AmountDue : 0m);
+            bool bIsPaid = allowInstallments ? bPaid >= b.AmountDue : b.PaidAt.HasValue;
+            string paymentStatusLabel = allowInstallments
+                ? (bIsPaid ? "Paid" : (bPaid > 0 ? $"Partial ({bPaid:N0})" : "Unpaid"))
+                : (bIsPaid ? "Paid" : "Unpaid");
+            string paymentBg = bIsPaid ? GreenBg : (bPaid > 0 ? OrangeBg : RedBg);
+
+            ws.Cell(row, 7).Value = paymentStatusLabel;
+            ws.Cell(row, 7).Style.Fill.BackgroundColor = XLColor.FromHtml(paymentBg);
 
             ws.Cell(row, 8).Value = b.PaidAt.HasValue
                 ? b.PaidAt.Value.ToString("dd/MM/yyyy") : "";
@@ -366,10 +378,14 @@ public class TripExportService : ITripExportService
                                 });
                             }
 
+                            decimal pdfTotalPaid = trip.AllowInstallments
+                                ? confirmed.Sum(b => b.Payments.Where(p => !p.IsDeleted).Sum(p => p.AmountPaid))
+                                : confirmed.Where(b => b.PaidAt.HasValue).Sum(b => b.AmountDue);
+
                             SC("Confirmed",      confirmed.Count.ToString());
                             SC("Waiting",        waiting.Count.ToString());
                             SC("Total Expected", $"{confirmed.Sum(b => b.AmountDue):N0} EGP");
-                            SC("Total Paid",     $"{confirmed.Where(b => b.PaidAt.HasValue).Sum(b => b.AmountDue):N0} EGP");
+                            SC("Total Paid",     $"{pdfTotalPaid:N0} EGP");
                             SC("Full Price",     $"{trip.Price:N0} EGP");
                             SC("Sibling Price",  $"{trip.SiblingPrice:N0} EGP");
                             SC("Capacity",       trip.MaxCapacity.HasValue ? trip.MaxCapacity.Value.ToString() : "Unlimited");
@@ -408,14 +424,24 @@ public class TripExportService : ITripExportService
                                 foreach (var b in confirmed)
                                 {
                                     var bg = idx % 2 == 0 ? RowAlt : White;
+                                    decimal bPaidPdf = trip.AllowInstallments
+                                        ? b.Payments.Where(p => !p.IsDeleted).Sum(p => p.AmountPaid)
+                                        : (b.PaidAt.HasValue ? b.AmountDue : 0m);
+                                    bool bIsPaidPdf = trip.AllowInstallments
+                                        ? bPaidPdf >= b.AmountDue
+                                        : b.PaidAt.HasValue;
+                                    string pdfPayLabel = trip.AllowInstallments
+                                        ? (bIsPaidPdf ? "Paid" : (bPaidPdf > 0 ? $"Partial ({bPaidPdf:N0})" : "Unpaid"))
+                                        : (bIsPaidPdf ? "Paid" : "Unpaid");
+                                    string paidBg = bIsPaidPdf ? GreenBg : (bPaidPdf > 0 ? OrangeBg : RedBg);
+
                                     t.Cell().Background(bg).Padding(3).Text(idx.ToString()).FontSize(8);
                                     t.Cell().Background(bg).Padding(3).Text(b.Member?.FullName ?? "").FontSize(8);
                                     t.Cell().Background(bg).Padding(3).Text(b.Member?.CustomId.ToString("D6") ?? "").FontSize(8);
                                     t.Cell().Background(bg).Padding(3).Text(b.Member?.Troop?.Name ?? "").FontSize(8);
                                     t.Cell().Background(bg).Padding(3).Text(b.IsSibling ? "Yes" : "No").FontSize(8);
                                     t.Cell().Background(bg).Padding(3).Text($"{b.AmountDue:N0}").FontSize(8);
-                                    var paidBg = b.PaidAt.HasValue ? GreenBg : RedBg;
-                                    t.Cell().Background(paidBg).Padding(3).Text(b.PaidAt.HasValue ? "Paid" : "Unpaid").FontSize(8);
+                                    t.Cell().Background(paidBg).Padding(3).Text(pdfPayLabel).FontSize(8);
                                     idx++;
                                     total += b.AmountDue;
                                 }

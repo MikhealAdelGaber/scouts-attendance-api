@@ -731,6 +731,13 @@ public static class DbSeeder
             try { await context.Database.ExecuteSqlRawAsync(@"CREATE INDEX IF NOT EXISTS ""IX_YearlyMemberArchives_MemberId""  ON ""YearlyMemberArchives"" (""MemberId"")"); } catch { }
             try { await context.Database.ExecuteSqlRawAsync(@"CREATE INDEX IF NOT EXISTS ""IX_YearlyMemberArchives_GroupId""   ON ""YearlyMemberArchives"" (""GroupId"")"); } catch { }
 
+            // ── New columns added to YearlyMemberArchives (exam score + project stats) ──
+            // These were added in migration AddYearlyArchiveExamAndProjectFields but
+            // production uses EnsureCreated so we add them explicitly here.
+            try { await context.Database.ExecuteSqlRawAsync(@"ALTER TABLE ""YearlyMemberArchives"" ADD COLUMN IF NOT EXISTS ""LatestExamScore""   DECIMAL(10,2)"); } catch { }
+            try { await context.Database.ExecuteSqlRawAsync(@"ALTER TABLE ""YearlyMemberArchives"" ADD COLUMN IF NOT EXISTS ""TotalProjects""     INTEGER NOT NULL DEFAULT 0"); } catch { }
+            try { await context.Database.ExecuteSqlRawAsync(@"ALTER TABLE ""YearlyMemberArchives"" ADD COLUMN IF NOT EXISTS ""ProjectsCompleted"" INTEGER NOT NULL DEFAULT 0"); } catch { }
+
             // ── CanAccessProjects column on Users ─────────────────────────────────
             try
             {

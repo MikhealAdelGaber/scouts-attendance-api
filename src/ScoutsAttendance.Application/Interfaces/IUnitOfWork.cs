@@ -106,6 +106,13 @@ public interface IUnitOfWork : IDisposable
 
     // ── Year-end global bulk deletes ──────────────────────────────────────────
 
+    /// <summary>
+    /// When an event is deleted: hard-deletes all MemberPoints that were auto-awarded
+    /// for that event (via AttendanceRecordId), then hard-deletes all AttendanceRecords
+    /// for the event. Call this BEFORE soft-deleting the Event row.
+    /// </summary>
+    Task DeleteEventDataAsync(Guid eventId);
+
     /// <summary>Hard-deletes ALL MemberPoints rows across every member/group (year-end reset).</summary>
     Task<int> DeleteAllMemberPointsGlobalAsync();
 

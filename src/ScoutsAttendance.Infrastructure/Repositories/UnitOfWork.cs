@@ -247,6 +247,41 @@ public class UnitOfWork : IUnitOfWork
         }
     }
 
+    // ── Event deletion ────────────────────────────────────────────────────────
+
+    /// <inheritdoc />
+    public async Task DeleteEventDataAsync(Guid eventId)
+    {
+        var isPostgres = _context.Database.ProviderName?
+            .Contains("Npgsql", StringComparison.OrdinalIgnoreCase) ?? false;
+
+        if (isPostgres)
+        {
+            // 1. Delete all MemberPoints linked to this event's attendance records
+            await _context.Database.ExecuteSqlRawAsync(@"
+                DELETE FROM ""MemberPoints""
+                WHERE ""AttendanceRecordId"" IN (
+                    SELECT ""Id"" FROM ""AttendanceRecords"" WHERE ""EventId"" = {0}
+                )", eventId);
+
+            // 2. Hard-delete all AttendanceRecords for this event
+            await _context.Database.ExecuteSqlRawAsync(@"
+                DELETE FROM ""AttendanceRecords"" WHERE ""EventId"" = {0}", eventId);
+        }
+        else
+        {
+            // SQL Server syntax
+            await _context.Database.ExecuteSqlRawAsync(@"
+                DELETE FROM [MemberPoints]
+                WHERE [AttendanceRecordId] IN (
+                    SELECT [Id] FROM [AttendanceRecords] WHERE [EventId] = {0}
+                )", eventId);
+
+            await _context.Database.ExecuteSqlRawAsync(@"
+                DELETE FROM [AttendanceRecords] WHERE [EventId] = {0}", eventId);
+        }
+    }
+
     // ── Year-end global bulk deletes ──────────────────────────────────────────
 
     /// <inheritdoc />

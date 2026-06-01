@@ -128,6 +128,12 @@ public class EventService : IEventService
     {
         var ev = await _uow.Events.GetByIdAsync(id);
         if (ev is null) return false;
+
+        // 1. Delete all auto-points and attendance records for this event so
+        //    member point totals are updated before the event disappears.
+        await _uow.DeleteEventDataAsync(id);
+
+        // 2. Soft-delete the event itself
         _uow.Events.SoftDelete(ev);
         await _uow.SaveChangesAsync();
         return true;

@@ -126,16 +126,25 @@ public class EventService : IEventService
 
     public async Task<bool> DeleteAsync(Guid id)
     {
-        var ev = await _uow.Events.GetByIdAsync(id);
+        // Use IgnoreQueryFilters so we can still clean up data for events that
+        // were already soft-deleted before this fix was deployed.
+        var ev = await _uow.Events.Query()
+            .IgnoreQueryFilters()
+            .FirstOrDefaultAsync(e => e.Id == id);
+
         if (ev is null) return false;
 
         // 1. Delete all auto-points and attendance records for this event so
         //    member point totals are updated before the event disappears.
         await _uow.DeleteEventDataAsync(id);
 
-        // 2. Soft-delete the event itself
-        _uow.Events.SoftDelete(ev);
-        await _uow.SaveChangesAsync();
+        // 2. Soft-delete the event if not already deleted
+        if (!ev.IsDeleted)
+        {
+            _uow.Events.SoftDelete(ev);
+            await _uow.SaveChangesAsync();
+        }
+
         return true;
     }
 

@@ -795,6 +795,35 @@ public static class DbSeeder
 
             try { await context.Database.ExecuteSqlRawAsync(@"CREATE UNIQUE INDEX IF NOT EXISTS ""IX_ProjectScores_ProjectMember"" ON ""MemberProjectScores"" (""ProjectId"", ""MemberId"") WHERE ""IsDeleted"" = false"); } catch { }
             try { await context.Database.ExecuteSqlRawAsync(@"CREATE INDEX IF NOT EXISTS ""IX_ProjectScores_MemberId"" ON ""MemberProjectScores"" (""MemberId"")"); } catch { }
+
+            // ── Retroactive cleanup: remove orphaned points/attendance for deleted events ──
+            // Events soft-deleted before the fix (EventService.DeleteAsync now removes them)
+            // left MemberPoints and AttendanceRecords behind.
+            // These two statements are fully idempotent — no-op when nothing to clean.
+            try
+            {
+                // Step 1: Delete MemberPoints linked to attendance records of deleted events
+                await context.Database.ExecuteSqlRawAsync(@"
+                    DELETE FROM ""MemberPoints""
+                    WHERE ""AttendanceRecordId"" IN (
+                        SELECT ar.""Id""
+                        FROM   ""AttendanceRecords"" ar
+                        JOIN   ""Events"" e ON ar.""EventId"" = e.""Id""
+                        WHERE  e.""IsDeleted"" = TRUE
+                    )");
+            }
+            catch { /* safe — runs on every startup */ }
+
+            try
+            {
+                // Step 2: Hard-delete AttendanceRecords belonging to deleted events
+                await context.Database.ExecuteSqlRawAsync(@"
+                    DELETE FROM ""AttendanceRecords""
+                    WHERE ""EventId"" IN (
+                        SELECT ""Id"" FROM ""Events"" WHERE ""IsDeleted"" = TRUE
+                    )");
+            }
+            catch { /* safe */ }
         }
         else
         {

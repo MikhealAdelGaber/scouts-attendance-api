@@ -27,6 +27,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         libxext6 \
         libxrender1 \
         fontconfig \
+        fonts-noto-core \
     && fc-cache -fv \
     && rm -rf /var/lib/apt/lists/*
 

@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using QuestPDF.Drawing;
 using QuestPDF.Infrastructure;
 using ScoutsAttendance.Application.Interfaces;
 using ScoutsAttendance.Application.Services;
@@ -17,6 +18,35 @@ public static class DependencyInjection
     {
         // Set QuestPDF community licence once at startup (Settings is in root QuestPDF namespace)
         QuestPDF.Settings.License = QuestPDF.Infrastructure.LicenseType.Community;
+
+        // Register Arabic-capable font so names like "ميرا بهاء" render correctly in PDF exports.
+        // fonts-noto-core (installed in Dockerfile) ships NotoNaskhArabic on Linux.
+        // On Windows dev machines the font lives under C:\Windows\Fonts.
+        var arabicFontCandidates = new[]
+        {
+            // Linux (Debian / Railway Docker image)
+            "/usr/share/fonts/truetype/noto/NotoNaskhArabic-Regular.ttf",
+            "/usr/share/fonts/truetype/noto/NotoNaskhArabicUI-Regular.ttf",
+            "/usr/share/fonts/opentype/noto/NotoNaskhArabic-Regular.ttf",
+            // Windows fallback (dev machines)
+            @"C:\Windows\Fonts\arial.ttf",
+            @"C:\Windows\Fonts\times.ttf",
+        };
+        foreach (var fontPath in arabicFontCandidates)
+        {
+            if (!File.Exists(fontPath)) continue;
+            try
+            {
+                using var stream = File.OpenRead(fontPath);
+                FontManager.RegisterFont(stream);
+                Console.WriteLine($"[QuestPDF] Registered Arabic font: {fontPath}");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[QuestPDF] Failed to register font {fontPath}: {ex.Message}");
+            }
+            break;
+        }
 
         // Railway sets DATABASE_URL for PostgreSQL add-on; fall back to SQL Server for local dev
         var databaseUrl = Environment.GetEnvironmentVariable("DATABASE_URL");

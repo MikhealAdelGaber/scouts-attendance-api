@@ -29,6 +29,19 @@ public sealed class QrPdfExportService : IQrPdfExportService
     private const string BorderColor  = "#e0e0e0";
     private const string White        = "#ffffff";
 
+    // ── Arabic font helpers ───────────────────────────────────────────────────
+    // Registered in DependencyInjection.cs from the system's Noto Naskh Arabic TTF.
+    private const string ArabicFont = "Noto Naskh Arabic";
+    private const string LatinFont  = "Lato";
+
+    /// <summary>Returns true when the string contains any Arabic/RTL characters.</summary>
+    private static bool IsArabic(string? text) =>
+        text != null && text.Any(c => c >= '؀' && c <= 'ۿ');
+
+    /// <summary>Picks the right font family for a given string.</summary>
+    private static string FontFor(string? text) =>
+        IsArabic(text) ? ArabicFont : LatinFont;
+
     public QrPdfExportService(
         IUnitOfWork uow,
         ICurrentUserService currentUser,
@@ -183,7 +196,8 @@ public sealed class QrPdfExportService : IQrPdfExportService
                     row.RelativeItem()
                         .AlignMiddle()
                         .Text(troopName)
-                        .Bold().FontSize(15).FontColor(White);
+                        .Bold().FontSize(15).FontColor(White)
+                        .FontFamily(FontFor(troopName));
 
                     row.AutoItem()
                         .AlignMiddle()
@@ -225,7 +239,8 @@ public sealed class QrPdfExportService : IQrPdfExportService
                     row.RelativeItem()
                         .AlignBottom()
                         .Text(troopName)
-                        .FontSize(7.5f).FontColor(TextHint);
+                        .FontSize(7.5f).FontColor(TextHint)
+                        .FontFamily(FontFor(troopName));
 
                     row.RelativeItem()
                         .AlignBottom()
@@ -273,25 +288,28 @@ public sealed class QrPdfExportService : IQrPdfExportService
                     .Width(90)
                     .Image(qrBytes);
 
-                // Member full name
+                // Member full name — use Arabic font when name contains Arabic chars
+                bool nameIsArabic = IsArabic(member.FullName);
                 col.Item()
                     .AlignCenter()
                     .PaddingTop(2)
                     .Text(member.FullName)
-                    .Bold().FontSize(8.5f).FontColor(TextPrimary);
+                    .Bold().FontSize(8.5f).FontColor(TextPrimary)
+                    .FontFamily(nameIsArabic ? ArabicFont : LatinFont);
 
-                // 6-digit scout ID
+                // 6-digit scout ID (always Latin digits)
                 col.Item()
                     .AlignCenter()
                     .Text($"#{member.CustomId:D6}")
                     .FontSize(8f).FontColor(Primary);
 
-                // Academic grade (optional)
+                // Academic grade (optional) — may also be Arabic
                 if (!string.IsNullOrWhiteSpace(member.AcademicYear))
                     col.Item()
                         .AlignCenter()
                         .Text(member.AcademicYear)
-                        .FontSize(7.5f).FontColor(TextSecond);
+                        .FontSize(7.5f).FontColor(TextSecond)
+                        .FontFamily(FontFor(member.AcademicYear));
             });
     }
 }

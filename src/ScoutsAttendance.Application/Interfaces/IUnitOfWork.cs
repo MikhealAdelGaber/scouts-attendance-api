@@ -34,6 +34,11 @@ public interface IUnitOfWork : IDisposable
     IRepository<Project>             Projects      { get; }
     IRepository<MemberProjectScore>  ProjectScores { get; }
 
+    // ── Final Report ──────────────────────────────────────────────────────────
+    IRepository<ReportTemplate>         ReportTemplates  { get; }
+    IRepository<ReportTemplateCategory> ReportCategories { get; }
+    IRepository<MemberCustomScore>      CustomScores     { get; }
+
     // ── Transfer Requests ─────────────────────────────────────────────────────
     IRepository<MemberTransferRequest>  TransferRequests  { get; }
     IRepository<MemberTransferArchive>  TransferArchives  { get; }
@@ -109,6 +114,25 @@ public interface IUnitOfWork : IDisposable
 
     /// <summary>Hard-deletes ALL PendingExcuse rows across every member/group (year-end reset).</summary>
     Task<int> DeleteAllPendingExcusesGlobalAsync();
+
+    /// <summary>Hard-deletes ALL AttendanceRecord rows (year-end reset). Call AFTER MemberPoints.</summary>
+    Task<int> DeleteAllAttendanceRecordsGlobalAsync();
+
+    /// <summary>Soft-deletes ALL Events (year-end reset). Call AFTER AttendanceRecords.</summary>
+    Task<int> SoftDeleteAllEventsGlobalAsync();
+
+    /// <summary>Hard-deletes all Trip-related rows (TripAttendanceRecords, BookingPayments, TripBookings) then soft-deletes Trips.</summary>
+    Task<int> DeleteAllTripDataGlobalAsync();
+
+    /// <summary>Hard-deletes ALL MemberProjectScore rows, then soft-deletes all Projects.</summary>
+    Task<int> DeleteAllProjectDataGlobalAsync();
+
+    /// <summary>
+    /// Unassigns all members + users from every troop (TroopId → NULL),
+    /// deletes TroopPointCategories, then soft-deletes all Troops.
+    /// Returns the number of troops soft-deleted.
+    /// </summary>
+    Task<int> DeleteAllTroopsGlobalAsync();
 
     /// <summary>
     /// Verifies <paramref name="plainPassword"/> against the BCrypt hash stored for

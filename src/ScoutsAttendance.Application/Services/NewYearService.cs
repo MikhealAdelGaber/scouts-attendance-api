@@ -76,6 +76,7 @@ public class NewYearService : INewYearService
         var members = await _uow.Members.Query()
             .Include(m => m.Group)
             .Include(m => m.Troop)
+            .Where(m => !m.IsDeleted)
             .ToListAsync();
 
         // Aggregate points per member
@@ -106,10 +107,37 @@ public class NewYearService : INewYearService
             .ToListAsync();
         var excuseMap = excuseList.ToDictionary(x => x.Key, x => x.Count);
 
+        // Latest exam score per member (highest year wins)
+        var examList = await _uow.MemberExamScores.Query()
+            .GroupBy(e => e.MemberId)
+            .Select(g => new { g.Key, Score = g.OrderByDescending(e => e.Year).First().Score })
+            .ToListAsync();
+        var examMap = examList.ToDictionary(x => x.Key, x => (decimal?)x.Score);
+
+        // Projects per group and per member
+        var projects = await _uow.Projects.Query()
+            .Where(p => !p.IsDeleted)
+            .ToListAsync();
+
+        // Total projects per group
+        var projectsPerGroup = projects
+            .GroupBy(p => p.GroupId)
+            .ToDictionary(g => g.Key, g => g.Count());
+
+        // Projects completed per member (score > 0)
+        var projectScoreList = await _uow.ProjectScores.Query()
+            .Where(s => !s.IsDeleted && s.Score > 0)
+            .GroupBy(s => s.MemberId)
+            .Select(g => new { g.Key, Count = g.Count() })
+            .ToListAsync();
+        var projCompletedMap = projectScoreList.ToDictionary(x => x.Key, x => x.Count);
+
         var totalGroups = members.Select(m => m.GroupId).Distinct().Count();
 
         // ── Transaction ───────────────────────────────────────────────────────
         int pointsDeleted = 0, excusesDeleted = 0, pendingDeleted = 0;
+        int attDeleted = 0, eventsDeleted = 0, tripsDeleted = 0;
+        int projectsDeleted = 0, troopsDeleted = 0;
 
         await _uow.ExecuteInTransactionAsync(async () =>
         {
@@ -124,23 +152,27 @@ public class NewYearService : INewYearService
             };
             await _uow.YearlyArchives.AddAsync(archive);
 
-            // 2. Create one YearlyMemberArchive per member
+            // 2. Create one YearlyMemberArchive per member (full snapshot)
             var memberArchives = members.Select(m =>
             {
                 attMap.TryGetValue(m.Id, out var att);
+                var groupProjects = projectsPerGroup.GetValueOrDefault(m.GroupId);
                 return new YearlyMemberArchive
                 {
                     YearlyArchiveId      = archive.Id,
                     MemberId             = m.Id,
                     MemberName           = m.FullName,
                     GroupId              = m.GroupId,
-                    GroupName            = m.Group?.Name   ?? string.Empty,
+                    GroupName            = m.Group?.Name ?? string.Empty,
                     TroopId              = m.TroopId,
                     TroopName            = m.Troop?.Name,
                     TotalPointsAtYearEnd = pointsMap.GetValueOrDefault(m.Id),
                     TotalAttendanceCount = att?.Count    ?? 0,
                     TotalEventsAttended  = att?.Attended ?? 0,
                     TotalExcusesCount    = excuseMap.GetValueOrDefault(m.Id),
+                    LatestExamScore      = examMap.GetValueOrDefault(m.Id),
+                    TotalProjects        = groupProjects,
+                    ProjectsCompleted    = projCompletedMap.GetValueOrDefault(m.Id),
                     AcademicGrade        = m.AcademicYear
                 };
             }).ToList();
@@ -150,20 +182,37 @@ public class NewYearService : INewYearService
             // Persist archive rows first (in the same transaction)
             await _uow.SaveChangesAsync();
 
-            // 3. Delete ALL MemberPoints (delete before AttendanceRecords — FK safety)
-            pointsDeleted = await _uow.DeleteAllMemberPointsGlobalAsync();
+            // 3. Delete MemberPoints (FK to AttendanceRecords — must go first)
+            pointsDeleted   = await _uow.DeleteAllMemberPointsGlobalAsync();
 
-            // 4. Delete ALL MemberExcuses
-            excusesDeleted = await _uow.DeleteAllMemberExcusesGlobalAsync();
+            // 4. Delete AttendanceRecords (FK to Events)
+            attDeleted      = await _uow.DeleteAllAttendanceRecordsGlobalAsync();
 
-            // 5. Delete ALL PendingExcuses
-            pendingDeleted = await _uow.DeleteAllPendingExcusesGlobalAsync();
+            // 5. Soft-delete Events
+            eventsDeleted   = await _uow.SoftDeleteAllEventsGlobalAsync();
+
+            // 6. Delete all Trip data (attendance → payments → bookings → trips)
+            tripsDeleted    = await _uow.DeleteAllTripDataGlobalAsync();
+
+            // 7. Delete project scores + soft-delete Projects
+            projectsDeleted = await _uow.DeleteAllProjectDataGlobalAsync();
+
+            // 8. Unassign members/users from troops + delete TroopPointCategories + soft-delete Troops
+            troopsDeleted   = await _uow.DeleteAllTroopsGlobalAsync();
+
+            // 9. Delete MemberExcuses
+            excusesDeleted  = await _uow.DeleteAllMemberExcusesGlobalAsync();
+
+            // 10. Delete PendingExcuses
+            pendingDeleted  = await _uow.DeleteAllPendingExcusesGlobalAsync();
         });
 
         _log.LogInformation(
             "[NewYear] Completed. Members={Members}, Groups={Groups}, " +
-            "PointsDeleted={Points}, ExcusesDeleted={Excuses}, PendingDeleted={Pending}",
-            members.Count, totalGroups, pointsDeleted, excusesDeleted, pendingDeleted);
+            "Points={Points}, Att={Att}, Events={Events}, Trips={Trips}, " +
+            "Projects={Projects}, Troops={Troops}, Excuses={Excuses}",
+            members.Count, totalGroups, pointsDeleted, attDeleted, eventsDeleted,
+            tripsDeleted, projectsDeleted, troopsDeleted, excusesDeleted);
 
         // Retrieve the archive Id we just inserted
         var saved = await _uow.YearlyArchives.Query()
@@ -180,7 +229,12 @@ public class NewYearService : INewYearService
             ArchivedAt            = now,
             PointsDeleted         = pointsDeleted,
             ExcusesDeleted        = excusesDeleted,
-            PendingExcusesDeleted = pendingDeleted
+            PendingExcusesDeleted = pendingDeleted,
+            AttendanceDeleted     = attDeleted,
+            EventsDeleted         = eventsDeleted,
+            TripsDeleted          = tripsDeleted,
+            ProjectsDeleted       = projectsDeleted,
+            TroopsDeleted         = troopsDeleted
         });
     }
 
@@ -229,6 +283,9 @@ public class NewYearService : INewYearService
                 TotalAttendanceCount = m.TotalAttendanceCount,
                 TotalEventsAttended  = m.TotalEventsAttended,
                 TotalExcusesCount    = m.TotalExcusesCount,
+                LatestExamScore      = m.LatestExamScore,
+                TotalProjects        = m.TotalProjects,
+                ProjectsCompleted    = m.ProjectsCompleted,
                 AcademicGrade        = m.AcademicGrade
             }).ToList()
         };

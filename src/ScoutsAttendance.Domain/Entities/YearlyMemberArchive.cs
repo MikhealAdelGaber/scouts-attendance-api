@@ -25,6 +25,15 @@ public class YearlyMemberArchive : BaseEntity
     public int      TotalEventsAttended   { get; set; }
     public int      TotalExcusesCount     { get; set; }
 
+    /// <summary>Latest exam score (0–100) or null if none recorded.</summary>
+    public decimal? LatestExamScore       { get; set; }
+
+    /// <summary>Number of projects in this member's group for the year.</summary>
+    public int      TotalProjects         { get; set; }
+
+    /// <summary>Number of projects where the member received a score &gt; 0.</summary>
+    public int      ProjectsCompleted     { get; set; }
+
     public string?  AcademicGrade         { get; set; }
 
     // ── Navigation ────────────────────────────────────────────────────────────

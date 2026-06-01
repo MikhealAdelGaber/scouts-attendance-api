@@ -22,14 +22,19 @@ public class VerifyPasswordDto
 
 public class NewYearResultDto
 {
-    public Guid     ArchiveId      { get; set; }
-    public string   ArchiveYear    { get; set; } = string.Empty;
-    public int      TotalMembers   { get; set; }
-    public int      TotalGroups    { get; set; }
-    public DateTime ArchivedAt     { get; set; }
-    public int      PointsDeleted  { get; set; }
-    public int      ExcusesDeleted { get; set; }
+    public Guid     ArchiveId             { get; set; }
+    public string   ArchiveYear           { get; set; } = string.Empty;
+    public int      TotalMembers          { get; set; }
+    public int      TotalGroups           { get; set; }
+    public DateTime ArchivedAt            { get; set; }
+    public int      PointsDeleted         { get; set; }
+    public int      ExcusesDeleted        { get; set; }
     public int      PendingExcusesDeleted { get; set; }
+    public int      AttendanceDeleted     { get; set; }
+    public int      EventsDeleted         { get; set; }
+    public int      TripsDeleted          { get; set; }
+    public int      ProjectsDeleted       { get; set; }
+    public int      TroopsDeleted         { get; set; }
 }
 
 // ─── Archive list / detail ────────────────────────────────────────────────────
@@ -61,5 +66,20 @@ public class YearlyMemberArchiveDto
     public int      TotalAttendanceCount  { get; set; }
     public int      TotalEventsAttended   { get; set; }
     public int      TotalExcusesCount     { get; set; }
+    public decimal? LatestExamScore       { get; set; }
+    public int      TotalProjects         { get; set; }
+    public int      ProjectsCompleted     { get; set; }
     public string?  AcademicGrade         { get; set; }
+
+    /// <summary>Attendance percentage (0–100). Null if no events recorded.</summary>
+    public decimal? AttendanceRate =>
+        TotalAttendanceCount > 0
+            ? Math.Round((decimal)TotalEventsAttended / TotalAttendanceCount * 100, 1)
+            : null;
+
+    /// <summary>Project completion percentage (0–100). Null if no projects.</summary>
+    public decimal? ProjectRate =>
+        TotalProjects > 0
+            ? Math.Round((decimal)ProjectsCompleted / TotalProjects * 100, 1)
+            : null;
 }

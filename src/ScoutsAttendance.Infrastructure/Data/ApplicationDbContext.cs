@@ -37,6 +37,11 @@ public class ApplicationDbContext : DbContext
     public DbSet<Project>            Projects      => Set<Project>();
     public DbSet<MemberProjectScore> ProjectScores => Set<MemberProjectScore>();
 
+    // ── Final Report ──────────────────────────────────────────────────────────
+    public DbSet<ReportTemplate>         ReportTemplates   => Set<ReportTemplate>();
+    public DbSet<ReportTemplateCategory> ReportCategories  => Set<ReportTemplateCategory>();
+    public DbSet<MemberCustomScore>      CustomScores      => Set<MemberCustomScore>();
+
     // ── Transfer Requests ─────────────────────────────────────────────────────
     public DbSet<MemberTransferRequest>  TransferRequests  => Set<MemberTransferRequest>();
     public DbSet<MemberTransferArchive>  TransferArchives  => Set<MemberTransferArchive>();
@@ -480,6 +485,45 @@ public class ApplicationDbContext : DbContext
             e.Property(a => a.TotalPointsAtTransfer).HasColumnType("decimal(10,2)");
         });
         mb.Entity<MemberTransferArchive>().HasQueryFilter(e => !e.IsDeleted);
+
+        // ─── ReportTemplate ────────────────────────────────────────────────────
+        mb.Entity<ReportTemplate>(e =>
+        {
+            e.ToTable("ReportTemplates");
+            e.HasIndex(t => t.GroupId);
+            e.Property(t => t.Name).HasMaxLength(200);
+            e.Property(t => t.CreatedBy).HasMaxLength(200);
+            e.HasOne(t => t.Group).WithMany().HasForeignKey(t => t.GroupId).OnDelete(DeleteBehavior.Restrict);
+            e.HasOne(t => t.Troop).WithMany().HasForeignKey(t => t.TroopId).IsRequired(false).OnDelete(DeleteBehavior.SetNull);
+        });
+        mb.Entity<ReportTemplate>().HasQueryFilter(e => !e.IsDeleted);
+
+        // ─── ReportTemplateCategory ────────────────────────────────────────────
+        mb.Entity<ReportTemplateCategory>(e =>
+        {
+            e.ToTable("ReportTemplateCategories");
+            e.HasIndex(c => c.ReportTemplateId);
+            e.Property(c => c.CategoryName).HasMaxLength(200);
+            e.Property(c => c.CustomDescription).HasMaxLength(500).IsRequired(false);
+            e.Property(c => c.Weight).HasColumnType("decimal(10,2)");
+            e.Property(c => c.CategoryType).HasConversion<int>();
+            e.HasOne(c => c.Template).WithMany(t => t.Categories).HasForeignKey(c => c.ReportTemplateId).OnDelete(DeleteBehavior.Cascade);
+        });
+        mb.Entity<ReportTemplateCategory>().HasQueryFilter(e => !e.IsDeleted);
+
+        // ─── MemberCustomScore ─────────────────────────────────────────────────
+        mb.Entity<MemberCustomScore>(e =>
+        {
+            e.ToTable("MemberCustomScores");
+            e.HasIndex(s => new { s.ReportTemplateCategoryId, s.MemberId }).IsUnique();
+            e.HasIndex(s => s.MemberId);
+            e.Property(s => s.Score).HasColumnType("decimal(10,2)");
+            e.Property(s => s.Notes).HasMaxLength(500).IsRequired(false);
+            e.Property(s => s.EnteredBy).HasMaxLength(200);
+            e.HasOne(s => s.Category).WithMany(c => c.CustomScores).HasForeignKey(s => s.ReportTemplateCategoryId).OnDelete(DeleteBehavior.Cascade);
+            e.HasOne(s => s.Member).WithMany().HasForeignKey(s => s.MemberId).OnDelete(DeleteBehavior.Cascade);
+        });
+        mb.Entity<MemberCustomScore>().HasQueryFilter(e => !e.IsDeleted);
 
         // ─── Project ───────────────────────────────────────────────────────────
         mb.Entity<Project>(e =>

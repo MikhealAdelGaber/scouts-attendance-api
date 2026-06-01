@@ -43,6 +43,11 @@ public class UnitOfWork : IUnitOfWork
         Projects      = new GenericRepository<Project>(context);
         ProjectScores = new GenericRepository<MemberProjectScore>(context);
 
+        // Final Report
+        ReportTemplates  = new GenericRepository<ReportTemplate>(context);
+        ReportCategories = new GenericRepository<ReportTemplateCategory>(context);
+        CustomScores     = new GenericRepository<MemberCustomScore>(context);
+
         // Transfer Requests
         TransferRequests = new GenericRepository<MemberTransferRequest>(context);
         TransferArchives = new GenericRepository<MemberTransferArchive>(context);
@@ -81,6 +86,11 @@ public class UnitOfWork : IUnitOfWork
     // Projects
     public IRepository<Project>             Projects      { get; }
     public IRepository<MemberProjectScore>  ProjectScores { get; }
+
+    // Final Report
+    public IRepository<ReportTemplate>         ReportTemplates  { get; }
+    public IRepository<ReportTemplateCategory> ReportCategories { get; }
+    public IRepository<MemberCustomScore>      CustomScores     { get; }
 
     // Transfer Requests
     public IRepository<MemberTransferRequest>  TransferRequests  { get; }
@@ -267,6 +277,111 @@ public class UnitOfWork : IUnitOfWork
         return isPostgres
             ? await _context.Database.ExecuteSqlRawAsync(@"DELETE FROM ""PendingExcuses""")
             : await _context.Database.ExecuteSqlRawAsync(@"DELETE FROM [PendingExcuses]");
+    }
+
+    /// <inheritdoc />
+    public async Task<int> DeleteAllAttendanceRecordsGlobalAsync()
+    {
+        var isPostgres = _context.Database.ProviderName?
+            .Contains("Npgsql", StringComparison.OrdinalIgnoreCase) ?? false;
+        return isPostgres
+            ? await _context.Database.ExecuteSqlRawAsync(@"DELETE FROM ""AttendanceRecords""")
+            : await _context.Database.ExecuteSqlRawAsync(@"DELETE FROM [AttendanceRecords]");
+    }
+
+    /// <inheritdoc />
+    public async Task<int> SoftDeleteAllEventsGlobalAsync()
+    {
+        var isPostgres = _context.Database.ProviderName?
+            .Contains("Npgsql", StringComparison.OrdinalIgnoreCase) ?? false;
+        var now = DateTime.UtcNow;
+        return isPostgres
+            ? await _context.Database.ExecuteSqlRawAsync(
+                @"UPDATE ""Events"" SET ""IsDeleted"" = TRUE, ""UpdatedAt"" = {0} WHERE ""IsDeleted"" = FALSE", now)
+            : await _context.Database.ExecuteSqlRawAsync(
+                @"UPDATE [Events] SET [IsDeleted] = 1, [UpdatedAt] = {0} WHERE [IsDeleted] = 0", now);
+    }
+
+    /// <inheritdoc />
+    public async Task<int> DeleteAllTripDataGlobalAsync()
+    {
+        var isPostgres = _context.Database.ProviderName?
+            .Contains("Npgsql", StringComparison.OrdinalIgnoreCase) ?? false;
+        var now = DateTime.UtcNow;
+        int total = 0;
+
+        if (isPostgres)
+        {
+            total += await _context.Database.ExecuteSqlRawAsync(@"DELETE FROM ""TripAttendanceRecords""");
+            total += await _context.Database.ExecuteSqlRawAsync(@"DELETE FROM ""BookingPayments""");
+            total += await _context.Database.ExecuteSqlRawAsync(@"DELETE FROM ""TripBookings""");
+            total += await _context.Database.ExecuteSqlRawAsync(
+                @"UPDATE ""Trips"" SET ""IsDeleted"" = TRUE, ""UpdatedAt"" = {0} WHERE ""IsDeleted"" = FALSE", now);
+        }
+        else
+        {
+            total += await _context.Database.ExecuteSqlRawAsync(@"DELETE FROM [TripAttendanceRecords]");
+            total += await _context.Database.ExecuteSqlRawAsync(@"DELETE FROM [BookingPayments]");
+            total += await _context.Database.ExecuteSqlRawAsync(@"DELETE FROM [TripBookings]");
+            total += await _context.Database.ExecuteSqlRawAsync(
+                @"UPDATE [Trips] SET [IsDeleted] = 1, [UpdatedAt] = {0} WHERE [IsDeleted] = 0", now);
+        }
+        return total;
+    }
+
+    /// <inheritdoc />
+    public async Task<int> DeleteAllProjectDataGlobalAsync()
+    {
+        var isPostgres = _context.Database.ProviderName?
+            .Contains("Npgsql", StringComparison.OrdinalIgnoreCase) ?? false;
+        var now = DateTime.UtcNow;
+        int total = 0;
+
+        if (isPostgres)
+        {
+            total += await _context.Database.ExecuteSqlRawAsync(@"DELETE FROM ""MemberProjectScores""");
+            total += await _context.Database.ExecuteSqlRawAsync(
+                @"UPDATE ""Projects"" SET ""IsDeleted"" = TRUE, ""UpdatedAt"" = {0} WHERE ""IsDeleted"" = FALSE", now);
+        }
+        else
+        {
+            total += await _context.Database.ExecuteSqlRawAsync(@"DELETE FROM [MemberProjectScores]");
+            total += await _context.Database.ExecuteSqlRawAsync(
+                @"UPDATE [Projects] SET [IsDeleted] = 1, [UpdatedAt] = {0} WHERE [IsDeleted] = 0", now);
+        }
+        return total;
+    }
+
+    /// <inheritdoc />
+    public async Task<int> DeleteAllTroopsGlobalAsync()
+    {
+        var isPostgres = _context.Database.ProviderName?
+            .Contains("Npgsql", StringComparison.OrdinalIgnoreCase) ?? false;
+        var now = DateTime.UtcNow;
+
+        if (isPostgres)
+        {
+            // Unassign all members and users from their troops
+            await _context.Database.ExecuteSqlRawAsync(
+                @"UPDATE ""Members"" SET ""TroopId"" = NULL, ""UpdatedAt"" = {0} WHERE ""TroopId"" IS NOT NULL AND ""IsDeleted"" = FALSE", now);
+            await _context.Database.ExecuteSqlRawAsync(
+                @"UPDATE ""Users"" SET ""TroopId"" = NULL, ""UpdatedAt"" = {0} WHERE ""TroopId"" IS NOT NULL AND ""IsDeleted"" = FALSE", now);
+            // Delete troop-scoped point categories
+            await _context.Database.ExecuteSqlRawAsync(@"DELETE FROM ""TroopPointCategories""");
+            // Soft-delete all troops
+            return await _context.Database.ExecuteSqlRawAsync(
+                @"UPDATE ""Troops"" SET ""IsDeleted"" = TRUE, ""UpdatedAt"" = {0} WHERE ""IsDeleted"" = FALSE", now);
+        }
+        else
+        {
+            await _context.Database.ExecuteSqlRawAsync(
+                @"UPDATE [Members] SET [TroopId] = NULL, [UpdatedAt] = {0} WHERE [TroopId] IS NOT NULL AND [IsDeleted] = 0", now);
+            await _context.Database.ExecuteSqlRawAsync(
+                @"UPDATE [Users] SET [TroopId] = NULL, [UpdatedAt] = {0} WHERE [TroopId] IS NOT NULL AND [IsDeleted] = 0", now);
+            await _context.Database.ExecuteSqlRawAsync(@"DELETE FROM [TroopPointCategories]");
+            return await _context.Database.ExecuteSqlRawAsync(
+                @"UPDATE [Troops] SET [IsDeleted] = 1, [UpdatedAt] = {0} WHERE [IsDeleted] = 0", now);
+        }
     }
 
     /// <inheritdoc />

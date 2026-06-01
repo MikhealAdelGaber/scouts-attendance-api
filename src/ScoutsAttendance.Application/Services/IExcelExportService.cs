@@ -29,4 +29,7 @@ public interface IExcelExportService
 
     /// <summary>Exports project results as Excel: all members with score, max, %, grade.</summary>
     Task<byte[]> ExportProjectResultsAsync(ProjectDto project, IEnumerable<ProjectMemberScoreDto> members);
+
+    /// <summary>Exports a final report template result as Excel (stub — reserved for future use).</summary>
+    Task<byte[]> ExportFinalReportAsync(object results);
 }

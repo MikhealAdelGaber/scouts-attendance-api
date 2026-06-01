@@ -583,63 +583,189 @@ public class ExcelExportService : IExcelExportService
     {
         using var wb = new XLWorkbook();
 
-        // ── Sheet 1: Summary ─────────────────────────────────────────────────
-        var ws1 = wb.Worksheets.Add("Summary");
-        AddLogoRow(ws1, $"Year Archive — {archive.ArchiveYear}");
-        ws1.Range(1, 1, 1, 4).Merge();
+        // ────────────────────────────────────────────────────────────────────
+        // Sheet 1 — Summary
+        // ────────────────────────────────────────────────────────────────────
+        var wsSummary = wb.Worksheets.Add("Summary");
+        AddLogoRow(wsSummary, $"Year Archive — {archive.ArchiveYear}");
+        wsSummary.Range(1, 1, 1, 4).Merge();
 
         int r = 3;
         void SummaryRow(string label, string value)
         {
-            ws1.Cell(r, 1).Value = label;
-            ws1.Cell(r, 1).Style.Font.Bold = true;
-            ws1.Cell(r, 2).Value = value;
+            wsSummary.Cell(r, 1).Value = label;
+            wsSummary.Cell(r, 1).Style.Font.Bold = true;
+            wsSummary.Cell(r, 2).Value = value;
             r++;
         }
-
         SummaryRow("Academic Year",  archive.ArchiveYear);
         SummaryRow("Archived At",    archive.ArchivedAt.ToString("yyyy-MM-dd HH:mm") + " UTC");
         SummaryRow("Archived By",    archive.ArchivedBy);
         SummaryRow("Total Members",  archive.TotalMembers.ToString());
         SummaryRow("Total Groups",   archive.TotalGroups.ToString());
+        wsSummary.Columns().AdjustToContents();
 
-        ws1.Columns().AdjustToContents();
+        // ────────────────────────────────────────────────────────────────────
+        // Sheet 2 — All Members (combined across all groups)
+        // ────────────────────────────────────────────────────────────────────
+        BuildMembersSheet(wb, archive.Members, $"All Members — {archive.ArchiveYear}",
+            "All Members", archiveYear: archive.ArchiveYear);
 
-        // ── Sheet 2: Members ─────────────────────────────────────────────────
-        var ws2 = wb.Worksheets.Add("Members");
-        AddLogoRow(ws2, $"Members — {archive.ArchiveYear}");
-        ws2.Range(1, 1, 1, 9).Merge();
+        // ────────────────────────────────────────────────────────────────────
+        // Sheets 3..N — One sheet per Group
+        // ────────────────────────────────────────────────────────────────────
+        var groups = archive.Members
+            .GroupBy(m => new { m.GroupId, m.GroupName })
+            .OrderBy(g => g.Key.GroupName)
+            .ToList();
 
+        foreach (var grp in groups)
+        {
+            // Excel sheet names ≤ 31 chars, no special chars
+            var sheetName = SafeSheetName(grp.Key.GroupName);
+            BuildMembersSheet(wb, grp.ToList(),
+                $"{grp.Key.GroupName} — {archive.ArchiveYear}",
+                sheetName, archiveYear: archive.ArchiveYear);
+        }
+
+        return Task.FromResult(WorkbookToBytes(wb));
+    }
+
+    // ─── Per-group / all-members sheet builder ──────────────────────────────
+
+    private static void BuildMembersSheet(
+        XLWorkbook wb,
+        List<YearlyMemberArchiveDto> members,
+        string title,
+        string sheetName,
+        string archiveYear)
+    {
+        var ws = wb.Worksheets.Add(sheetName);
+        int colCount = 11;
+        AddLogoRow(ws, title);
+        ws.Range(1, 1, 1, colCount).Merge();
+
+        // ── Column headers ──
         var headers = new[]
         {
-            "Member Name", "Group", "Troop", "Academic Grade",
-            "Total Points", "Attendance Records", "Events Attended", "Excuses"
+            "#", "Member Name", "Troop", "Grade",
+            "Total Points",
+            "Attendance %", "Events Attended / Total",
+            "Exam Score (/100)",
+            "Projects % ", "Projects Done / Total",
+            "Excuses"
         };
-        var hRow = ws2.Row(3);
+        var hRow = ws.Row(3);
         for (int i = 0; i < headers.Length; i++) hRow.Cell(i + 1).Value = headers[i];
         StyleHeader(hRow, headers.Length);
 
-        int row = 4;
-        foreach (var m in archive.Members)
+        // ── Data rows ──
+        int row = 4, rank = 1;
+        foreach (var m in members.OrderByDescending(x => x.TotalPointsAtYearEnd))
         {
-            ws2.Cell(row, 1).Value = m.MemberName;
-            ws2.Cell(row, 2).Value = m.GroupName;
-            ws2.Cell(row, 3).Value = m.TroopName ?? "—";
-            ws2.Cell(row, 4).Value = m.AcademicGrade ?? "—";
-            ws2.Cell(row, 5).Value = (double)m.TotalPointsAtYearEnd;
-            ws2.Cell(row, 6).Value = m.TotalAttendanceCount;
-            ws2.Cell(row, 7).Value = m.TotalEventsAttended;
-            ws2.Cell(row, 8).Value = m.TotalExcusesCount;
+            bool alt = row % 2 == 0;
+            var rowBg = XLColor.FromHtml(alt ? "#f3f4f9" : "#ffffff");
 
-            if (row % 2 == 0)
-                ws2.Range(row, 1, row, headers.Length).Style.Fill.BackgroundColor = XLColor.FromHtml("#f3f4f9");
+            ws.Cell(row, 1).Value  = rank++;
+            ws.Cell(row, 2).Value  = m.MemberName;
+            ws.Cell(row, 3).Value  = m.TroopName ?? "—";
+            ws.Cell(row, 4).Value  = m.AcademicGrade ?? "—";
+
+            // Points
+            ws.Cell(row, 5).Value  = (double)m.TotalPointsAtYearEnd;
+            ws.Cell(row, 5).Style.NumberFormat.Format = "#,##0.##";
+            ws.Cell(row, 5).Style.Font.Bold = true;
+
+            // Attendance %
+            if (m.AttendanceRate.HasValue)
+            {
+                ws.Cell(row, 6).Value = (double)m.AttendanceRate.Value / 100.0;
+                ws.Cell(row, 6).Style.NumberFormat.Format = "0.0%";
+                var attColor = m.AttendanceRate.Value >= 80 ? "#e8f5e9"
+                             : m.AttendanceRate.Value >= 60 ? "#fff3e0" : "#fce4ec";
+                ws.Cell(row, 6).Style.Fill.BackgroundColor = XLColor.FromHtml(attColor);
+            }
+            else { ws.Cell(row, 6).Value = "—"; }
+
+            ws.Cell(row, 7).Value  = $"{m.TotalEventsAttended} / {m.TotalAttendanceCount}";
+
+            // Exam score
+            if (m.LatestExamScore.HasValue)
+            {
+                ws.Cell(row, 8).Value = (double)m.LatestExamScore.Value;
+                ws.Cell(row, 8).Style.NumberFormat.Format = "0.##";
+                var examColor = m.LatestExamScore.Value >= 80 ? "#e8f5e9"
+                              : m.LatestExamScore.Value >= 60 ? "#fff3e0" : "#fce4ec";
+                ws.Cell(row, 8).Style.Fill.BackgroundColor = XLColor.FromHtml(examColor);
+            }
+            else { ws.Cell(row, 8).Value = "—"; }
+
+            // Projects %
+            if (m.ProjectRate.HasValue)
+            {
+                ws.Cell(row, 9).Value = (double)m.ProjectRate.Value / 100.0;
+                ws.Cell(row, 9).Style.NumberFormat.Format = "0.0%";
+                var projColor = m.ProjectRate.Value >= 80 ? "#e8f5e9"
+                              : m.ProjectRate.Value >= 60 ? "#fff3e0" : "#fce4ec";
+                ws.Cell(row, 9).Style.Fill.BackgroundColor = XLColor.FromHtml(projColor);
+            }
+            else { ws.Cell(row, 9).Value = "—"; }
+
+            ws.Cell(row, 10).Value = $"{m.ProjectsCompleted} / {m.TotalProjects}";
+            ws.Cell(row, 11).Value = m.TotalExcusesCount;
+
+            // Shade non-colored cells
+            foreach (int c in new[] { 1, 2, 3, 4, 5, 7, 10, 11 })
+                ws.Cell(row, c).Style.Fill.BackgroundColor = rowBg;
+
             row++;
         }
 
-        ws2.Columns().AdjustToContents();
-        ws2.SheetView.FreezeRows(3);
+        // ── Footer totals ──
+        int foot = row;
+        ws.Cell(foot, 1).Value = "TOTAL / AVG";
+        ws.Cell(foot, 1).Style.Font.Bold = true;
+        ws.Cell(foot, 2).Value = $"{members.Count} members";
+        ws.Cell(foot, 5).Value = members.Sum(m => (double)m.TotalPointsAtYearEnd);
+        ws.Cell(foot, 5).Style.NumberFormat.Format = "#,##0.##";
+        ws.Cell(foot, 5).Style.Font.Bold = true;
 
-        return Task.FromResult(WorkbookToBytes(wb));
+        var withAtt  = members.Where(m => m.AttendanceRate.HasValue).ToList();
+        var withExam = members.Where(m => m.LatestExamScore.HasValue).ToList();
+        var withProj = members.Where(m => m.ProjectRate.HasValue).ToList();
+
+        if (withAtt.Any())
+        {
+            ws.Cell(foot, 6).Value = (double)withAtt.Average(m => m.AttendanceRate!.Value) / 100.0;
+            ws.Cell(foot, 6).Style.NumberFormat.Format = "0.0%";
+        }
+        if (withExam.Any())
+        {
+            ws.Cell(foot, 8).Value = (double)withExam.Average(m => m.LatestExamScore!.Value);
+            ws.Cell(foot, 8).Style.NumberFormat.Format = "0.##";
+        }
+        if (withProj.Any())
+        {
+            ws.Cell(foot, 9).Value = (double)withProj.Average(m => m.ProjectRate!.Value) / 100.0;
+            ws.Cell(foot, 9).Style.NumberFormat.Format = "0.0%";
+        }
+
+        ws.Range(foot, 1, foot, headers.Length)
+          .Style.Fill.BackgroundColor = XLColor.FromHtml("#e8eaf6");
+        ws.Range(foot, 1, foot, headers.Length).Style.Font.Bold = true;
+
+        int[] widths = { 4, 26, 16, 12, 13, 14, 22, 18, 14, 20, 9 };
+        for (int i = 0; i < widths.Length; i++)
+            ws.Column(i + 1).Width = widths[i];
+
+        ws.SheetView.FreezeRows(3);
+    }
+
+    private static string SafeSheetName(string name)
+    {
+        var invalid = new[] { '/', '\\', '?', '*', '[', ']', ':' };
+        var clean   = string.Concat(name.Select(c => invalid.Contains(c) ? '_' : c));
+        return clean.Length > 31 ? clean[..31] : clean;
     }
 
     // ─── Project Results Export ─────────────────────────────────────────────
@@ -720,4 +846,8 @@ public class ExcelExportService : IExcelExportService
         ws.SheetView.FreezeRows(3);
         return Task.FromResult(WorkbookToBytes(wb));
     }
+
+    /// <summary>Stub — reserved for future final-report export implementation.</summary>
+    public Task<byte[]> ExportFinalReportAsync(object results)
+        => throw new NotImplementedException("Final report export is not yet implemented.");
 }

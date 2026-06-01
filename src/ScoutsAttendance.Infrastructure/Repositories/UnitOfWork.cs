@@ -366,6 +366,8 @@ public class UnitOfWork : IUnitOfWork
                 @"UPDATE ""Members"" SET ""TroopId"" = NULL, ""UpdatedAt"" = {0} WHERE ""TroopId"" IS NOT NULL AND ""IsDeleted"" = FALSE", now);
             await _context.Database.ExecuteSqlRawAsync(
                 @"UPDATE ""Users"" SET ""TroopId"" = NULL, ""UpdatedAt"" = {0} WHERE ""TroopId"" IS NOT NULL AND ""IsDeleted"" = FALSE", now);
+            // Delete troop points first (FK → TroopPointCategories with SetNull, but let's be explicit)
+            await _context.Database.ExecuteSqlRawAsync(@"DELETE FROM ""TroopPoints""");
             // Delete troop-scoped point categories
             await _context.Database.ExecuteSqlRawAsync(@"DELETE FROM ""TroopPointCategories""");
             // Soft-delete all troops
@@ -378,6 +380,7 @@ public class UnitOfWork : IUnitOfWork
                 @"UPDATE [Members] SET [TroopId] = NULL, [UpdatedAt] = {0} WHERE [TroopId] IS NOT NULL AND [IsDeleted] = 0", now);
             await _context.Database.ExecuteSqlRawAsync(
                 @"UPDATE [Users] SET [TroopId] = NULL, [UpdatedAt] = {0} WHERE [TroopId] IS NOT NULL AND [IsDeleted] = 0", now);
+            await _context.Database.ExecuteSqlRawAsync(@"DELETE FROM [TroopPoints]");
             await _context.Database.ExecuteSqlRawAsync(@"DELETE FROM [TroopPointCategories]");
             return await _context.Database.ExecuteSqlRawAsync(
                 @"UPDATE [Troops] SET [IsDeleted] = 1, [UpdatedAt] = {0} WHERE [IsDeleted] = 0", now);

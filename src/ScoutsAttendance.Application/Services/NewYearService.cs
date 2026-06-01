@@ -107,12 +107,15 @@ public class NewYearService : INewYearService
             .ToListAsync();
         var excuseMap = excuseList.ToDictionary(x => x.Key, x => x.Count);
 
-        // Latest exam score per member (highest year wins)
-        var examList = await _uow.MemberExamScores.Query()
+        // Latest exam score per member — load into memory first to avoid LINQ-to-SQL
+        // translation issues with OrderByDescending().First() inside a GroupBy select.
+        var allExamScores = await _uow.MemberExamScores.Query().ToListAsync();
+        var examMap = allExamScores
             .GroupBy(e => e.MemberId)
-            .Select(g => new { g.Key, Score = g.OrderByDescending(e => e.Year).First().Score })
-            .ToListAsync();
-        var examMap = examList.ToDictionary(x => x.Key, x => (decimal?)x.Score);
+            .ToDictionary(
+                g => g.Key,
+                g => (decimal?)g.OrderByDescending(e => e.Year).First().Score
+            );
 
         // Projects per group and per member
         var projects = await _uow.Projects.Query()
@@ -124,9 +127,9 @@ public class NewYearService : INewYearService
             .GroupBy(p => p.GroupId)
             .ToDictionary(g => g.Key, g => g.Count());
 
-        // Projects completed per member (score > 0)
+        // Projects completed per member (score > 0) — global filter already excludes deleted
         var projectScoreList = await _uow.ProjectScores.Query()
-            .Where(s => !s.IsDeleted && s.Score > 0)
+            .Where(s => s.Score > 0)
             .GroupBy(s => s.MemberId)
             .Select(g => new { g.Key, Count = g.Count() })
             .ToListAsync();

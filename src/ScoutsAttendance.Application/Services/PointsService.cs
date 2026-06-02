@@ -13,6 +13,12 @@ public interface IPointsService
     Task<PointCategoryDto?>             GetAttendanceCategoryAsync();
     Task<PointCategoryDto?>             UpdateAttendanceCategoryAsync(Guid id, UpdateAttendancePointsDto dto);
 
+    /// <summary>
+    /// Deletes a member point category ONLY when it has never been used (no MemberPoints reference it).
+    /// Returns (true,"") on success; (false, reason) if in-use or not found.
+    /// </summary>
+    Task<(bool Ok, string Error)> DeleteMemberCategoryAsync(Guid id);
+
     // ── Troop Categories ───────────────────────────────────────────────────────
     Task<IEnumerable<PointCategoryDto>> GetTroopCategoriesAsync(Guid? groupId = null);
     Task<PointCategoryDto>              CreateTroopCategoryAsync(CreatePointCategoryDto dto);
@@ -68,6 +74,24 @@ public class PointsService : IPointsService
         await _uow.MemberPointCategories.AddAsync(cat);
         await _uow.SaveChangesAsync();
         return MapMemberCategory(cat);
+    }
+
+    public async Task<(bool Ok, string Error)> DeleteMemberCategoryAsync(Guid id)
+    {
+        var cat = await _uow.MemberPointCategories.GetByIdAsync(id);
+        if (cat is null)
+            return (false, "Category not found.");
+
+        // Prevent deletion if any MemberPoints record references this category
+        bool isUsed = await _uow.MemberPoints.AnyAsync(
+            p => p.MemberPointCategoryId == id && !p.IsDeleted);
+
+        if (isUsed)
+            return (false, "This category cannot be deleted because it has been used to award points. Remove the related points first.");
+
+        _uow.MemberPointCategories.SoftDelete(cat);
+        await _uow.SaveChangesAsync();
+        return (true, string.Empty);
     }
 
     public async Task<PointCategoryDto?> GetAttendanceCategoryAsync()

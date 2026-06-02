@@ -29,4 +29,22 @@ public class MemberPointCategoriesController : ControllerBase
         var result = await _service.CreateMemberCategoryAsync(dto);
         return Ok(ApiResponse<PointCategoryDto>.Ok(result, "Member point category created"));
     }
+
+    /// <summary>
+    /// DELETE /api/member-point-categories/{id}
+    /// Deletes a category only if it has never been used.
+    /// Returns 409 Conflict when the category is in use.
+    /// </summary>
+    [HttpDelete("{id:guid}")]
+    [Authorize(Roles = "SystemAdmin,GroupLeader")]
+    public async Task<ActionResult<ApiResponse>> Delete(Guid id)
+    {
+        var (ok, error) = await _service.DeleteMemberCategoryAsync(id);
+        if (!ok)
+        {
+            // Return 409 so the frontend can show a friendly "in use" message
+            return Conflict(ApiResponse.Fail(error));
+        }
+        return Ok(ApiResponse.Ok("Category deleted"));
+    }
 }

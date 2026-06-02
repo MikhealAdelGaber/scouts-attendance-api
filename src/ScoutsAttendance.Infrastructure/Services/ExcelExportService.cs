@@ -170,8 +170,7 @@ public class ExcelExportService : IExcelExportService
         Guid? troopId, DateTime? from, DateTime? to)
     {
         // ── 1. Load events in the requested date range ──────────────────────────
-        var evQuery = _uow.Events.Query()
-            .Where(e => !e.IsDeleted);
+        var evQuery = _uow.Events.Query().Where(e => !e.IsDeleted);
         if (from.HasValue) evQuery = evQuery.Where(e => e.EventDate >= from.Value);
         if (to.HasValue)   evQuery = evQuery.Where(e => e.EventDate <= to.Value);
         var events = await evQuery.ToListAsync();
@@ -180,7 +179,7 @@ public class ExcelExportService : IExcelExportService
         // ── 2. Determine relevant group IDs ────────────────────────────────────
         var groupIds = events.Select(e => e.GroupId).Distinct().ToList();
 
-        // ── 3. Load members in scope (with excuses for date-range checking) ────
+        // ── 3. Load members in scope ────────────────────────────────────────────
         var membersQuery = _uow.Members.Query()
             .Include(m => m.Troop)
             .Include(m => m.Excuses)
@@ -190,20 +189,50 @@ public class ExcelExportService : IExcelExportService
         var members = await membersQuery.ToListAsync();
         if (!members.Any()) return [];
 
-        // ── 4. Load all attendance records for those events (single round-trip) ─
+        var memberIds = members.Select(m => m.Id).ToList();
+
+        // ── 4. Load attendance records ──────────────────────────────────────────
         var eventIds = events.Select(e => e.Id).ToList();
         var allRecords = await _uow.AttendanceRecords.Query()
             .Where(a => eventIds.Contains(a.EventId) && !a.IsDeleted)
             .ToListAsync();
 
-        // Lookup: eventId → memberId → status
         var recordLookup = allRecords
             .GroupBy(a => a.EventId)
-            .ToDictionary(
-                g => g.Key,
-                g => g.ToDictionary(a => a.MemberId, a => a.Status));
+            .ToDictionary(g => g.Key, g => g.ToDictionary(a => a.MemberId, a => a.Status));
 
-        // ── 5. Compute per-member counts across all applicable events ───────────
+        // ── 5. Load latest exam score per member (in memory to avoid LINQ translation) ──
+        var allExamScores = await _uow.MemberExamScores.Query()
+            .Where(e => memberIds.Contains(e.MemberId))
+            .ToListAsync();
+        var examMap = allExamScores
+            .GroupBy(e => e.MemberId)
+            .ToDictionary(g => g.Key, g => (decimal?)g.OrderByDescending(e => e.Year).First().Score);
+
+        // ── 6. Load projects per group ──────────────────────────────────────────
+        var projects = await _uow.Projects.Query()
+            .Where(p => groupIds.Contains(p.GroupId) && !p.IsDeleted)
+            .ToListAsync();
+        var projectsPerGroup = projects.GroupBy(p => p.GroupId)
+            .ToDictionary(g => g.Key, g => g.Count());
+
+        // ── 7. Load project scores per member (score > 0 = completed) ──────────
+        var projectScores = await _uow.ProjectScores.Query()
+            .Where(s => memberIds.Contains(s.MemberId) && s.Score > 0)
+            .GroupBy(s => s.MemberId)
+            .Select(g => new { MemberId = g.Key, Count = g.Count() })
+            .ToListAsync();
+        var projectScoreMap = projectScores.ToDictionary(x => x.MemberId, x => x.Count);
+
+        // ── 8. Load total points per member ─────────────────────────────────────
+        var pointsList = await _uow.MemberPoints.Query()
+            .Where(p => memberIds.Contains(p.MemberId))
+            .GroupBy(p => p.MemberId)
+            .Select(g => new { MemberId = g.Key, Total = g.Sum(p => p.Points) })
+            .ToListAsync();
+        var pointsMap = pointsList.ToDictionary(x => x.MemberId, x => x.Total);
+
+        // ── 9. Compute per-member stats ─────────────────────────────────────────
         var results = new List<AttendanceRateDto>(members.Count);
 
         foreach (var m in members)
@@ -212,9 +241,6 @@ public class ExcelExportService : IExcelExportService
 
             foreach (var ev in events)
             {
-                // An event applies to a member when:
-                //   • The event belongs to the member's group AND
-                //   • The event has no troop scope, OR its troop matches the member's troop
                 if (ev.GroupId != m.GroupId) continue;
                 if (ev.TroopId.HasValue && ev.TroopId != m.TroopId) continue;
 
@@ -234,26 +260,29 @@ public class ExcelExportService : IExcelExportService
                 }
                 else
                 {
-                    // No record for this event → auto-derive status
-                    // Active excuse covering the event date → Excused, else Absent
                     if (m.HasActiveExcuse(ev.EventDate)) excused++;
                     else                                 absent++;
                 }
             }
 
-            if (total == 0) continue; // No applicable events for this member
+            if (total == 0) continue;
 
             results.Add(new AttendanceRateDto
             {
-                MemberId    = m.Id,
-                MemberName  = m.FullName,
-                TroopName   = m.Troop?.Name ?? "",
-                TotalEvents = total,
-                Present     = present,
-                Late        = late,
-                TooLate     = tooLate,
-                Excused     = excused,
-                Absent      = absent
+                MemberId          = m.Id,
+                MemberName        = m.FullName,
+                TroopName         = m.Troop?.Name ?? "",
+                AcademicGrade     = m.AcademicYear,
+                TotalEvents       = total,
+                Present           = present,
+                Late              = late,
+                TooLate           = tooLate,
+                Excused           = excused,
+                Absent            = absent,
+                LatestExamScore   = examMap.GetValueOrDefault(m.Id),
+                TotalProjects     = projectsPerGroup.GetValueOrDefault(m.GroupId),
+                ProjectsCompleted = projectScoreMap.GetValueOrDefault(m.Id),
+                TotalPoints       = pointsMap.GetValueOrDefault(m.Id)
             });
         }
 
@@ -266,20 +295,25 @@ public class ExcelExportService : IExcelExportService
 
         using var wb = new XLWorkbook();
 
-        // ── Sheet 1: Summary ─────────────────────────────────────────────────
-        var wsSummary = wb.Worksheets.Add("Summary");
-        const int sumCols = 9;
+        // ── Sheet: Full Report ────────────────────────────────────────────────
+        var wsSummary = wb.Worksheets.Add("Attendance Report");
         AddLogoRow(wsSummary, "Attendance Rate Report — Scouts Attendance System");
-        wsSummary.Range(1, 1, 1, sumCols).Merge();
+        wsSummary.Range(1, 1, 1, 14).Merge();
 
         // Date range subtitle
         var rangeLabel = $"Period: {(from.HasValue ? from.Value.ToString("yyyy-MM-dd") : "All")} → {(to.HasValue ? to.Value.ToString("yyyy-MM-dd") : "All")}";
         wsSummary.Cell(2, 1).Value = rangeLabel;
         wsSummary.Cell(2, 1).Style.Font.Italic = true;
         wsSummary.Cell(2, 1).Style.Font.FontColor = XLColor.FromHtml("#555555");
-        wsSummary.Range(2, 1, 2, sumCols).Merge();
+        wsSummary.Range(2, 1, 2, 14).Merge();
 
-        var sumHeaders = new[] { "Rank", "Member", "Troop", "Total Events", "Present", "Late", "Too Late", "Excused", "Attendance Rate %" };
+        const int sumCols = 14;
+        var sumHeaders = new[]
+        {
+            "Rank", "Member", "Troop", "Grade",
+            "Total Events", "Present", "Late", "Too Late", "Excused", "Absent",
+            "Attendance %", "Exam Score", "Projects %", "Total Points"
+        };
         var shRow = wsSummary.Row(4);
         for (int i = 0; i < sumHeaders.Length; i++) shRow.Cell(i + 1).Value = sumHeaders[i];
         StyleHeader(shRow, sumHeaders.Length);
@@ -287,61 +321,103 @@ public class ExcelExportService : IExcelExportService
         int sRow = 5;
         foreach (var r in rates)
         {
-            wsSummary.Cell(sRow, 1).Value = sRow - 4;   // rank
-            wsSummary.Cell(sRow, 2).Value = r.MemberName;
-            wsSummary.Cell(sRow, 3).Value = r.TroopName;
-            wsSummary.Cell(sRow, 4).Value = r.TotalEvents;
-            wsSummary.Cell(sRow, 5).Value = r.Present;
-            wsSummary.Cell(sRow, 6).Value = r.Late;
-            wsSummary.Cell(sRow, 7).Value = r.TooLate;
-            wsSummary.Cell(sRow, 8).Value = r.Excused;
-            wsSummary.Cell(sRow, 9).Value = r.Rate;
+            bool alt = sRow % 2 == 0;
+            var rowBg = XLColor.FromHtml(alt ? "#f3f4f9" : "#ffffff");
 
-            // Colour-code the rate cell
-            var rateColor = r.Rate switch
+            wsSummary.Cell(sRow,  1).Value = sRow - 4;
+            wsSummary.Cell(sRow,  2).Value = r.MemberName;
+            wsSummary.Cell(sRow,  3).Value = r.TroopName;
+            wsSummary.Cell(sRow,  4).Value = r.AcademicGrade ?? "—";
+            wsSummary.Cell(sRow,  5).Value = r.TotalEvents;
+            wsSummary.Cell(sRow,  6).Value = r.Present;
+            wsSummary.Cell(sRow,  7).Value = r.Late;
+            wsSummary.Cell(sRow,  8).Value = r.TooLate;
+            wsSummary.Cell(sRow,  9).Value = r.Excused;
+            wsSummary.Cell(sRow, 10).Value = r.Absent;
+
+            // Attendance %
+            wsSummary.Cell(sRow, 11).Value = r.Rate / 100.0;
+            wsSummary.Cell(sRow, 11).Style.NumberFormat.Format = "0.0%";
+            wsSummary.Cell(sRow, 11).Style.Fill.BackgroundColor = r.Rate switch
             {
-                >= 90 => XLColor.FromHtml("#c8e6c9"),   // green
-                >= 70 => XLColor.FromHtml("#fff9c4"),   // yellow
-                >= 50 => XLColor.FromHtml("#ffe0b2"),   // orange
-                _     => XLColor.FromHtml("#ffcdd2")    // red
+                >= 90 => XLColor.FromHtml("#c8e6c9"),
+                >= 70 => XLColor.FromHtml("#fff9c4"),
+                >= 50 => XLColor.FromHtml("#ffe0b2"),
+                _     => XLColor.FromHtml("#ffcdd2")
             };
-            wsSummary.Cell(sRow, 9).Style.Fill.BackgroundColor = rateColor;
+            wsSummary.Cell(sRow, 11).Style.Font.Bold = true;
 
-            if (sRow % 2 == 0)
-                wsSummary.Range(sRow, 1, sRow, sumCols).Style.Fill.BackgroundColor = XLColor.FromHtml("#f3f4f9");
+            // Exam Score
+            if (r.LatestExamScore.HasValue)
+            {
+                wsSummary.Cell(sRow, 12).Value = (double)r.LatestExamScore.Value;
+                wsSummary.Cell(sRow, 12).Style.Fill.BackgroundColor = r.LatestExamScore.Value switch
+                {
+                    >= 80 => XLColor.FromHtml("#c8e6c9"),
+                    >= 60 => XLColor.FromHtml("#fff9c4"),
+                    _     => XLColor.FromHtml("#ffcdd2")
+                };
+            }
+            else { wsSummary.Cell(sRow, 12).Value = "—"; }
+
+            // Projects %
+            if (r.ProjectRate.HasValue)
+            {
+                wsSummary.Cell(sRow, 13).Value = r.ProjectRate.Value / 100.0;
+                wsSummary.Cell(sRow, 13).Style.NumberFormat.Format = "0.0%";
+                wsSummary.Cell(sRow, 13).Style.Fill.BackgroundColor = r.ProjectRate.Value switch
+                {
+                    >= 80 => XLColor.FromHtml("#c8e6c9"),
+                    >= 60 => XLColor.FromHtml("#fff9c4"),
+                    _     => XLColor.FromHtml("#ffcdd2")
+                };
+            }
+            else { wsSummary.Cell(sRow, 13).Value = "—"; }
+
+            // Total Points
+            wsSummary.Cell(sRow, 14).Value = (double)r.TotalPoints;
+            wsSummary.Cell(sRow, 14).Style.NumberFormat.Format = "#,##0.##";
+            wsSummary.Cell(sRow, 14).Style.Font.Bold = true;
+
+            // Row background for non-colour cells
+            foreach (int c in new[] { 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 14 })
+                wsSummary.Cell(sRow, c).Style.Fill.BackgroundColor = rowBg;
+
             sRow++;
         }
-        wsSummary.Columns().AdjustToContents();
-        wsSummary.SheetView.FreezeRows(4);
 
-        // ── Sheet 2: Detail (Absent only, for follow-up) ─────────────────────
-        var wsDetail = wb.Worksheets.Add("Absent Detail");
-        const int detCols = 5;
-        AddLogoRow(wsDetail, "Absent Members Detail");
-        wsDetail.Range(1, 1, 1, detCols).Merge();
-
-        var detHeaders = new[] { "Member", "Troop", "Total Events", "Absent", "Absent Rate %" };
-        var dhRow = wsDetail.Row(3);
-        for (int i = 0; i < detHeaders.Length; i++) dhRow.Cell(i + 1).Value = detHeaders[i];
-        StyleHeader(dhRow, detHeaders.Length);
-
-        int dRow = 4;
-        foreach (var r in rates.Where(r => r.Absent > 0).OrderByDescending(r => r.Absent))
+        // Footer averages
+        int footRow = sRow;
+        wsSummary.Cell(footRow, 1).Value = "AVG";
+        wsSummary.Cell(footRow, 1).Style.Font.Bold = true;
+        if (rates.Any())
         {
-            wsDetail.Cell(dRow, 1).Value = r.MemberName;
-            wsDetail.Cell(dRow, 2).Value = r.TroopName;
-            wsDetail.Cell(dRow, 3).Value = r.TotalEvents;
-            wsDetail.Cell(dRow, 4).Value = r.Absent;
-            wsDetail.Cell(dRow, 5).Value = r.TotalEvents > 0
-                ? Math.Round(r.Absent * 100.0 / r.TotalEvents, 1)
-                : 0;
-
-            if (dRow % 2 == 0)
-                wsDetail.Range(dRow, 1, dRow, detCols).Style.Fill.BackgroundColor = XLColor.FromHtml("#f3f4f9");
-            dRow++;
+            wsSummary.Cell(footRow, 11).Value = rates.Average(r => r.Rate) / 100.0;
+            wsSummary.Cell(footRow, 11).Style.NumberFormat.Format = "0.0%";
+            wsSummary.Cell(footRow, 11).Style.Font.Bold = true;
+            var withExam = rates.Where(r => r.LatestExamScore.HasValue).ToList();
+            if (withExam.Any())
+            {
+                wsSummary.Cell(footRow, 12).Value = (double)withExam.Average(r => r.LatestExamScore!.Value);
+                wsSummary.Cell(footRow, 12).Style.NumberFormat.Format = "0.#";
+                wsSummary.Cell(footRow, 12).Style.Font.Bold = true;
+            }
+            var withProj = rates.Where(r => r.ProjectRate.HasValue).ToList();
+            if (withProj.Any())
+            {
+                wsSummary.Cell(footRow, 13).Value = withProj.Average(r => r.ProjectRate!.Value) / 100.0;
+                wsSummary.Cell(footRow, 13).Style.NumberFormat.Format = "0.0%";
+                wsSummary.Cell(footRow, 13).Style.Font.Bold = true;
+            }
+            wsSummary.Cell(footRow, 14).Value = (double)rates.Sum(r => r.TotalPoints);
+            wsSummary.Cell(footRow, 14).Style.NumberFormat.Format = "#,##0.##";
+            wsSummary.Cell(footRow, 14).Style.Font.Bold = true;
         }
-        wsDetail.Columns().AdjustToContents();
-        wsDetail.SheetView.FreezeRows(3);
+        wsSummary.Range(footRow, 1, footRow, sumHeaders.Length).Style.Fill.BackgroundColor = XLColor.FromHtml("#e8eaf6");
+
+        int[] colWidths = { 5, 26, 16, 12, 12, 9, 8, 10, 9, 9, 14, 12, 12, 13 };
+        for (int i = 0; i < colWidths.Length; i++) wsSummary.Column(i + 1).Width = colWidths[i];
+        wsSummary.SheetView.FreezeRows(4);
 
         return WorkbookToBytes(wb);
     }

@@ -12,9 +12,14 @@ namespace ScoutsAttendance.Infrastructure.Services;
 /// <summary>Generates Excel (.xlsx) files using ClosedXML for all major data exports.</summary>
 public class ExcelExportService : IExcelExportService
 {
-    private readonly IUnitOfWork _uow;
+    private readonly IUnitOfWork         _uow;
+    private readonly ICurrentUserService _currentUser;
 
-    public ExcelExportService(IUnitOfWork uow) => _uow = uow;
+    public ExcelExportService(IUnitOfWork uow, ICurrentUserService currentUser)
+    {
+        _uow         = uow;
+        _currentUser = currentUser;
+    }
 
     // ─── Shared helpers ────────────────────────────────────────────────────────
 
@@ -169,8 +174,13 @@ public class ExcelExportService : IExcelExportService
     public async Task<IEnumerable<AttendanceRateDto>> GetAttendanceRateAsync(
         Guid? troopId, DateTime? from, DateTime? to)
     {
-        // ── 1. Load events in the requested date range ──────────────────────────
+        // ── 1. Load events in the requested date range (scoped to caller's group) ─
         var evQuery = _uow.Events.Query().Where(e => !e.IsDeleted);
+
+        // Non-SystemAdmin users see only their own group's events
+        if (!_currentUser.IsSystemAdmin && _currentUser.GroupId.HasValue)
+            evQuery = evQuery.Where(e => e.GroupId == _currentUser.GroupId.Value);
+
         if (from.HasValue) evQuery = evQuery.Where(e => e.EventDate >= from.Value);
         if (to.HasValue)   evQuery = evQuery.Where(e => e.EventDate <= to.Value);
         var events = await evQuery.ToListAsync();
@@ -184,6 +194,11 @@ public class ExcelExportService : IExcelExportService
             .Include(m => m.Troop)
             .Include(m => m.Excuses)
             .Where(m => groupIds.Contains(m.GroupId) && !m.IsDeleted);
+
+        // Non-SystemAdmin: further restrict to their own group
+        if (!_currentUser.IsSystemAdmin && _currentUser.GroupId.HasValue)
+            membersQuery = membersQuery.Where(m => m.GroupId == _currentUser.GroupId.Value);
+
         if (troopId.HasValue)
             membersQuery = membersQuery.Where(m => m.TroopId == troopId.Value);
         var members = await membersQuery.ToListAsync();

@@ -591,6 +591,28 @@ public static class DbSeeder
             }
             catch { /* safe */ }
 
+            // ── GroupName snapshot on MemberBadges ────────────────────────────────
+            try
+            {
+                await context.Database.ExecuteSqlRawAsync(
+                    @"ALTER TABLE ""MemberBadges"" ADD COLUMN IF NOT EXISTS ""GroupName"" TEXT");
+            }
+            catch { /* safe */ }
+
+            // Backfill GroupName for existing MemberBadges that don't have it yet
+            try
+            {
+                await context.Database.ExecuteSqlRawAsync(@"
+                    UPDATE ""MemberBadges"" mb
+                    SET    ""GroupName"" = g.""Name""
+                    FROM   ""Members"" m
+                    JOIN   ""Groups""  g ON m.""GroupId"" = g.""Id""
+                    WHERE  mb.""MemberId"" = m.""Id""
+                      AND  mb.""GroupName"" IS NULL
+                      AND  mb.""IsDeleted"" = FALSE");
+            }
+            catch { /* safe */ }
+
             // ── Backfill TroopName for existing MemberBadges ──────────────────────
             // Runs on every startup; no-op when all rows already have TroopName set.
             // Copies the current Troop name into any MemberBadge row that was awarded

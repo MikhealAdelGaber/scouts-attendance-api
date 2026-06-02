@@ -110,7 +110,7 @@ public class BadgeService : IBadgeService
     {
         var records = await _uow.MemberBadges.Query()
             .Include(mb => mb.Badge)
-            .Include(mb => mb.Member)
+            .Include(mb => mb.Member).ThenInclude(m => m.Group)
             .Include(mb => mb.Troop)
             .Where(mb => mb.MemberId == memberId && !mb.IsDeleted)
             .OrderByDescending(mb => mb.AwardedDate)
@@ -138,6 +138,22 @@ public class BadgeService : IBadgeService
             troopNameSnapshot = troop?.Name;
         }
 
+        // Resolve group name snapshot
+        string? groupNameSnapshot = null;
+        if (_currentUser.GroupId.HasValue)
+        {
+            var group = await _uow.Groups.GetByIdAsync(_currentUser.GroupId.Value);
+            groupNameSnapshot = group?.Name;
+        }
+        // For SystemAdmin awarding a badge to a member, fall back to member's group
+        if (groupNameSnapshot is null)
+        {
+            var memberWithGroup = await _uow.Members.Query()
+                .Include(m => m.Group)
+                .FirstOrDefaultAsync(m => m.Id == memberId);
+            groupNameSnapshot = memberWithGroup?.Group?.Name;
+        }
+
         var record = new MemberBadge
         {
             MemberId    = memberId,
@@ -145,6 +161,7 @@ public class BadgeService : IBadgeService
             AwardedDate = DateTime.SpecifyKind(dto.AwardedDate.Date, DateTimeKind.Utc),
             TroopId     = _currentUser.TroopId,
             TroopName   = troopNameSnapshot,
+            GroupName   = groupNameSnapshot,
             AwardedBy   = _currentUser.Username ?? "unknown",
             Notes       = dto.Notes?.Trim()
         };
@@ -219,8 +236,9 @@ public class BadgeService : IBadgeService
         BadgeCategory = mb.Badge?.Category,
         AwardedDate   = mb.AwardedDate,
         TroopId       = mb.TroopId,
-        // Prefer the stored snapshot (immutable history); fall back to live nav for older records
         TroopName     = mb.TroopName ?? mb.Troop?.Name,
+        // Prefer stored snapshot; fall back to current member group for older records
+        GroupName     = mb.GroupName ?? mb.Member?.Group?.Name,
         AwardedBy     = mb.AwardedBy,
         Notes         = mb.Notes
     };

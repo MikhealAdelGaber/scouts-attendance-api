@@ -10,6 +10,7 @@ public class MemberBadge : BaseEntity
     public DateTime  AwardedDate { get; set; }
     public Guid?     TroopId     { get; set; }   // troop that awarded it
     public string?   TroopName   { get; set; }   // snapshot — survives troop deletion / member transfer
+    public string?   GroupName   { get; set; }   // snapshot of the group at award time
     public string    AwardedBy   { get; set; } = string.Empty;  // username from JWT
     public string?   Notes       { get; set; }
 

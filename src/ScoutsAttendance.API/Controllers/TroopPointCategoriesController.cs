@@ -29,4 +29,13 @@ public class TroopPointCategoriesController : ControllerBase
         var result = await _service.CreateTroopCategoryAsync(dto);
         return Ok(ApiResponse<PointCategoryDto>.Ok(result, "Troop point category created"));
     }
+
+    [HttpDelete("{id:guid}")]
+    [Authorize(Roles = "SystemAdmin,GroupLeader")]
+    public async Task<ActionResult<ApiResponse>> Delete(Guid id)
+    {
+        var (ok, error) = await _service.DeleteTroopCategoryAsync(id);
+        if (!ok) return Conflict(ApiResponse.Fail(error));
+        return Ok(ApiResponse.Ok("Category deleted"));
+    }
 }

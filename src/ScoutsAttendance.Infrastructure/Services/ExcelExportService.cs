@@ -941,4 +941,114 @@ public class ExcelExportService : IExcelExportService
     /// <summary>Stub — reserved for future final-report export implementation.</summary>
     public Task<byte[]> ExportFinalReportAsync(object results)
         => throw new NotImplementedException("Final report export is not yet implemented.");
+
+    // ─── Badges Export ─────────────────────────────────────────────────────────
+
+    public async Task<byte[]> ExportBadgesAsync(Guid? troopId, string? category, DateTime? from, DateTime? to)
+    {
+        // Load badge awards (scoped to caller's group for non-SystemAdmin)
+        var query = _uow.MemberBadges.Query()
+            .Include(mb => mb.Badge)
+            .Include(mb => mb.Member).ThenInclude(m => m.Troop)
+            .Include(mb => mb.Member).ThenInclude(m => m.Group)
+            .Where(mb => !mb.IsDeleted && !mb.Member.IsDeleted);
+
+        if (!_currentUser.IsSystemAdmin && _currentUser.GroupId.HasValue)
+            query = query.Where(mb => mb.Member.GroupId == _currentUser.GroupId.Value);
+
+        if (troopId.HasValue)
+            query = query.Where(mb => mb.TroopId == troopId.Value || mb.Member.TroopId == troopId.Value);
+
+        if (!string.IsNullOrWhiteSpace(category))
+            query = query.Where(mb => mb.Badge.Category == category);
+
+        if (from.HasValue)
+            query = query.Where(mb => mb.AwardedDate >= from.Value);
+
+        if (to.HasValue)
+            query = query.Where(mb => mb.AwardedDate <= to.Value.AddDays(1));
+
+        var records = await query
+            .OrderByDescending(mb => mb.AwardedDate)
+            .ThenBy(mb => mb.Member.LastName)
+            .ToListAsync();
+
+        using var wb = new XLWorkbook();
+        var ws = wb.Worksheets.Add("Badges");
+
+        const int cols = 10;
+        AddLogoRow(ws, "Badges Report — Scouts Attendance System");
+        ws.Range(1, 1, 1, cols).Merge();
+
+        // Sub-header: applied filters
+        var filterParts = new List<string>();
+        if (from.HasValue || to.HasValue)
+            filterParts.Add($"Period: {(from.HasValue ? from.Value.ToString("yyyy-MM-dd") : "—")} → {(to.HasValue ? to.Value.ToString("yyyy-MM-dd") : "—")}");
+        if (!string.IsNullOrEmpty(category)) filterParts.Add($"Category: {category}");
+        ws.Cell(2, 1).Value = filterParts.Any() ? string.Join("  |  ", filterParts) : "All records";
+        ws.Cell(2, 1).Style.Font.Italic = true;
+        ws.Cell(2, 1).Style.Font.FontColor = XLColor.FromHtml("#555555");
+        ws.Range(2, 1, 2, cols).Merge();
+
+        // Headers
+        var headers = new[]
+        {
+            "#", "Member Name", "Member ID", "Troop", "Group",
+            "Badge", "Category", "Awarded Date", "Awarded By", "Notes"
+        };
+        var hRow = ws.Row(4);
+        for (int i = 0; i < headers.Length; i++) hRow.Cell(i + 1).Value = headers[i];
+        StyleHeader(hRow, headers.Length);
+
+        int row = 5;
+        foreach (var mb in records)
+        {
+            bool alt = row % 2 == 0;
+            var bg = XLColor.FromHtml(alt ? "#f3f4f9" : "#ffffff");
+
+            ws.Cell(row, 1).Value  = row - 4;
+            ws.Cell(row, 2).Value  = mb.Member?.FullName ?? "";
+            ws.Cell(row, 3).Value  = mb.Member?.CustomId.ToString("D6") ?? "";
+            ws.Cell(row, 4).Value  = mb.TroopName ?? mb.Member?.Troop?.Name ?? "—";
+            ws.Cell(row, 5).Value  = mb.GroupName ?? mb.Member?.Group?.Name ?? "—";
+            ws.Cell(row, 6).Value  = mb.Badge?.Name ?? "";
+            ws.Cell(row, 6).Style.Font.Bold = true;
+
+            // Badge category with colour
+            var cat = mb.Badge?.Category ?? "";
+            ws.Cell(row, 7).Value = cat;
+            if (!string.IsNullOrEmpty(cat))
+            {
+                var catColor = cat switch
+                {
+                    "Skills"     => "#e3f2fd",
+                    "Community"  => "#e8f5e9",
+                    "Sports"     => "#fff3e0",
+                    "Leadership" => "#f3e5f5",
+                    _            => "#f5f5f5"
+                };
+                ws.Cell(row, 7).Style.Fill.BackgroundColor = XLColor.FromHtml(catColor);
+            }
+
+            ws.Cell(row, 8).Value  = mb.AwardedDate.ToString("yyyy-MM-dd");
+            ws.Cell(row, 9).Value  = mb.AwardedBy;
+            ws.Cell(row, 10).Value = mb.Notes ?? "";
+
+            foreach (int c in new[] { 1, 2, 3, 4, 5, 6, 8, 9, 10 })
+                ws.Cell(row, c).Style.Fill.BackgroundColor = bg;
+            row++;
+        }
+
+        // Footer total row
+        int foot = row;
+        ws.Cell(foot, 1).Value = $"Total: {records.Count} award{(records.Count != 1 ? "s" : "")}";
+        ws.Cell(foot, 1).Style.Font.Bold = true;
+        ws.Range(foot, 1, foot, cols).Style.Fill.BackgroundColor = XLColor.FromHtml("#e8eaf6");
+
+        int[] widths = { 5, 26, 10, 16, 16, 20, 12, 14, 16, 22 };
+        for (int i = 0; i < widths.Length; i++) ws.Column(i + 1).Width = widths[i];
+        ws.SheetView.FreezeRows(4);
+
+        return WorkbookToBytes(wb);
+    }
 }

@@ -12,12 +12,14 @@ namespace ScoutsAttendance.API.Controllers;
 [Authorize]
 public class BadgesController : ControllerBase
 {
-    private readonly IBadgeService      _service;
+    private readonly IBadgeService       _service;
     private readonly ICurrentUserService _currentUser;
+    private readonly IExcelExportService _excel;
 
-    public BadgesController(IBadgeService service, ICurrentUserService currentUser)
+    public BadgesController(IBadgeService service, ICurrentUserService currentUser, IExcelExportService excel)
     {
         _service     = service;
+        _excel       = excel;
         _currentUser = currentUser;
     }
 
@@ -134,5 +136,28 @@ public class BadgesController : ControllerBase
         if (limit < 1 || limit > 100) limit = 30;
         var result = await _service.GetRecentBadgesAsync(limit);
         return Ok(ApiResponse<IEnumerable<MemberBadgeDto>>.Ok(result));
+    }
+
+    // ── Excel Export ──────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// GET /api/badges/export?troopId=&amp;category=&amp;from=&amp;to=
+    /// Downloads an Excel file of badge awards with the given filters applied.
+    /// </summary>
+    [HttpGet("export")]
+    public async Task<IActionResult> ExportExcel(
+        [FromQuery] Guid?    troopId  = null,
+        [FromQuery] string?  category = null,
+        [FromQuery] DateTime? from    = null,
+        [FromQuery] DateTime? to      = null)
+    {
+        if (!_currentUser.CanAccessBadges)
+            return Forbid();
+
+        var bytes    = await _excel.ExportBadgesAsync(troopId, category, from, to);
+        var filename = $"Badges-Report-{DateTime.UtcNow:yyyy-MM-dd}.xlsx";
+        return File(bytes,
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            filename);
     }
 }

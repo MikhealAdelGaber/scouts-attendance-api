@@ -30,6 +30,9 @@ public interface IExcelExportService
     /// <summary>Exports project results as Excel: all members with score, max, %, grade.</summary>
     Task<byte[]> ExportProjectResultsAsync(ProjectDto project, IEnumerable<ProjectMemberScoreDto> members);
 
+    /// <summary>Exports badge awards as Excel with optional filters: troopId, category, from, to.</summary>
+    Task<byte[]> ExportBadgesAsync(Guid? troopId, string? category, DateTime? from, DateTime? to);
+
     /// <summary>Exports a final report template result as Excel (stub — reserved for future use).</summary>
     Task<byte[]> ExportFinalReportAsync(object results);
 }

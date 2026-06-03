@@ -106,6 +106,11 @@ public class BadgesController : ControllerBase
             var result = await _service.AwardBadgeAsync(memberId, dto);
             return Ok(ApiResponse<MemberBadgeDto>.Ok(result, "Badge awarded"));
         }
+        catch (InvalidOperationException ex)
+        {
+            // 409 = duplicate badge for this member
+            return Conflict(ApiResponse.Fail(ex.Message));
+        }
         catch (KeyNotFoundException ex)
         {
             return NotFound(ApiResponse.Fail(ex.Message));

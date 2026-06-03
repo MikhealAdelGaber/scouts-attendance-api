@@ -122,12 +122,27 @@ public class BadgeService : IBadgeService
     public async Task<MemberBadgeDto> AwardBadgeAsync(Guid memberId, AwardBadgeDto dto)
     {
         // Verify member exists
-        var member = await _uow.Members.GetByIdAsync(memberId)
+        var member = await _uow.Members.Query()
+            .Include(m => m.Group)
+            .FirstOrDefaultAsync(m => m.Id == memberId && !m.IsDeleted)
             ?? throw new KeyNotFoundException($"Member {memberId} not found");
 
         // Verify badge exists
         var badge = await _uow.Badges.GetByIdAsync(dto.BadgeId)
             ?? throw new KeyNotFoundException($"Badge {dto.BadgeId} not found");
+
+        // Prevent duplicate: same badge in the same group
+        bool alreadyAwarded = await _uow.MemberBadges.AnyAsync(
+            mb => mb.MemberId == memberId
+               && mb.BadgeId  == dto.BadgeId
+               && !mb.IsDeleted);
+
+        if (alreadyAwarded)
+        {
+            var groupName = member.Group?.Name ?? "this group";
+            throw new InvalidOperationException(
+                $"This member already has the \"{badge.Name}\" badge in {groupName}. Each badge can only be awarded once per member.");
+        }
 
         // Resolve troop name snapshot — persist it as a string so it survives
         // troop deletion or member transfers with no data loss.

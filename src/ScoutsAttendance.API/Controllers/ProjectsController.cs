@@ -23,7 +23,7 @@ public class ProjectsController : ControllerBase
     // ── CRUD ──────────────────────────────────────────────────────────────────
 
     [HttpGet]
-    [Authorize(Roles = "SystemAdmin,GroupLeader")]
+    [Authorize(Roles = "SystemAdmin,GroupLeader,AttendanceOnly")]
     public async Task<ActionResult<ApiResponse<IEnumerable<ProjectDto>>>> GetAll()
     {
         var result = await _service.GetAllAsync();
@@ -31,7 +31,7 @@ public class ProjectsController : ControllerBase
     }
 
     [HttpGet("{id:guid}")]
-    [Authorize(Roles = "SystemAdmin,GroupLeader")]
+    [Authorize(Roles = "SystemAdmin,GroupLeader,AttendanceOnly")]
     public async Task<ActionResult<ApiResponse<ProjectDto>>> GetById(Guid id)
     {
         var result = await _service.GetByIdAsync(id);
@@ -81,7 +81,7 @@ public class ProjectsController : ControllerBase
     }
 
     [HttpPost("{id:guid}/members/{memberId:guid}/score")]
-    [Authorize(Roles = "SystemAdmin,GroupLeader")]
+    [Authorize(Roles = "SystemAdmin,GroupLeader,AttendanceOnly")]
     public async Task<ActionResult<ApiResponse<ProjectMemberScoreDto>>> SaveScore(
         Guid id, Guid memberId, [FromBody] SaveScoreDto dto)
     {
@@ -98,7 +98,7 @@ public class ProjectsController : ControllerBase
     // ── Export ────────────────────────────────────────────────────────────────
 
     [HttpGet("{id:guid}/export")]
-    [Authorize(Roles = "SystemAdmin,GroupLeader")]
+    [Authorize(Roles = "SystemAdmin,GroupLeader,AttendanceOnly")]
     public async Task<IActionResult> ExportResults(Guid id)
     {
         var project = await _service.GetByIdAsync(id);

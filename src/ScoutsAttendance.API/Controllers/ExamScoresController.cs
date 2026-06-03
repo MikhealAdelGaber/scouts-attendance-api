@@ -33,7 +33,7 @@ public class ExamScoresController : ControllerBase
 
     /// <summary>Create or update an exam score (upserts by memberId+year).</summary>
     [HttpPost]
-    [Authorize(Roles = "SystemAdmin,GroupLeader")]
+    [Authorize(Roles = "SystemAdmin,GroupLeader,AttendanceOnly")]
     public async Task<ActionResult<ApiResponse<ExamScoreDto>>> Create([FromBody] CreateExamScoreDto dto)
     {
         var result = await _service.CreateAsync(dto);
@@ -41,7 +41,7 @@ public class ExamScoresController : ControllerBase
     }
 
     [HttpPut("{id:guid}")]
-    [Authorize(Roles = "SystemAdmin,GroupLeader")]
+    [Authorize(Roles = "SystemAdmin,GroupLeader,AttendanceOnly")]
     public async Task<ActionResult<ApiResponse<ExamScoreDto>>> Update(Guid id, [FromBody] UpdateExamScoreDto dto)
     {
         var result = await _service.UpdateAsync(id, dto);
@@ -51,7 +51,7 @@ public class ExamScoresController : ControllerBase
     }
 
     [HttpDelete("{id:guid}")]
-    [Authorize(Roles = "SystemAdmin,GroupLeader")]
+    [Authorize(Roles = "SystemAdmin,GroupLeader,AttendanceOnly")]
     public async Task<ActionResult<ApiResponse>> Delete(Guid id)
     {
         var ok = await _service.DeleteAsync(id);

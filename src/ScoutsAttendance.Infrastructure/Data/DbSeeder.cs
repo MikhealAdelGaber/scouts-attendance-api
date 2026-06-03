@@ -599,16 +599,25 @@ public static class DbSeeder
             }
             catch { /* safe */ }
 
-            // Backfill GroupName for existing MemberBadges that don't have it yet
+            // ── GroupId snapshot on MemberBadges (added for per-group duplicate check) ──
+            try
+            {
+                await context.Database.ExecuteSqlRawAsync(
+                    @"ALTER TABLE ""MemberBadges"" ADD COLUMN IF NOT EXISTS ""GroupId"" UUID");
+            }
+            catch { /* safe */ }
+
+            // Backfill GroupId + GroupName for existing MemberBadges
             try
             {
                 await context.Database.ExecuteSqlRawAsync(@"
                     UPDATE ""MemberBadges"" mb
-                    SET    ""GroupName"" = g.""Name""
+                    SET    ""GroupId""   = m.""GroupId"",
+                           ""GroupName"" = g.""Name""
                     FROM   ""Members"" m
                     JOIN   ""Groups""  g ON m.""GroupId"" = g.""Id""
                     WHERE  mb.""MemberId"" = m.""Id""
-                      AND  mb.""GroupName"" IS NULL
+                      AND  mb.""GroupId""  IS NULL
                       AND  mb.""IsDeleted"" = FALSE");
             }
             catch { /* safe */ }

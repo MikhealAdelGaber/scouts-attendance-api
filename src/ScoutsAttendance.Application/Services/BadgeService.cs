@@ -131,17 +131,22 @@ public class BadgeService : IBadgeService
         var badge = await _uow.Badges.GetByIdAsync(dto.BadgeId)
             ?? throw new KeyNotFoundException($"Badge {dto.BadgeId} not found");
 
-        // Prevent duplicate: same badge in the same group
+        // Prevent duplicate: same badge within the SAME GROUP only.
+        // Members who transferred to a new group CAN receive the same badge again there.
+        var memberGroupId = member.GroupId;
         bool alreadyAwarded = await _uow.MemberBadges.AnyAsync(
             mb => mb.MemberId == memberId
                && mb.BadgeId  == dto.BadgeId
+               && mb.GroupId  == memberGroupId   // ← scoped to current group
                && !mb.IsDeleted);
 
         if (alreadyAwarded)
         {
             var groupName = member.Group?.Name ?? "this group";
             throw new InvalidOperationException(
-                $"This member already has the \"{badge.Name}\" badge in {groupName}. Each badge can only be awarded once per member.");
+                $"This member already has the \"{badge.Name}\" badge in {groupName}. " +
+                $"Each badge can only be awarded once per group. " +
+                $"If the member transferred to a new group, they can earn this badge there.");
         }
 
         // Resolve troop name snapshot — persist it as a string so it survives
@@ -176,6 +181,7 @@ public class BadgeService : IBadgeService
             AwardedDate = DateTime.SpecifyKind(dto.AwardedDate.Date, DateTimeKind.Utc),
             TroopId     = _currentUser.TroopId,
             TroopName   = troopNameSnapshot,
+            GroupId     = member.GroupId,     // ← snapshot the group at award time
             GroupName   = groupNameSnapshot,
             AwardedBy   = _currentUser.Username ?? "unknown",
             Notes       = dto.Notes?.Trim()
@@ -252,7 +258,7 @@ public class BadgeService : IBadgeService
         AwardedDate   = mb.AwardedDate,
         TroopId       = mb.TroopId,
         TroopName     = mb.TroopName ?? mb.Troop?.Name,
-        // Prefer stored snapshot; fall back to current member group for older records
+        GroupId       = mb.GroupId   ?? mb.Member?.GroupId,
         GroupName     = mb.GroupName ?? mb.Member?.Group?.Name,
         AwardedBy     = mb.AwardedBy,
         Notes         = mb.Notes

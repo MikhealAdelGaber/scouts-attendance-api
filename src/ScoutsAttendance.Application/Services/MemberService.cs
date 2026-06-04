@@ -113,10 +113,15 @@ public class MemberService : IMemberService
 
         // ── Filters ──────────────────────────────────────────────────────────
         if (!string.IsNullOrWhiteSpace(search))
+        {
+            var s = search.Trim().ToLower();
             query = query.Where(m =>
-                m.FirstName.Contains(search) || m.LastName.Contains(search) ||
+                m.FirstName.ToLower().Contains(s) ||
+                m.LastName.ToLower().Contains(s)  ||
+                (m.FirstName + " " + m.LastName).ToLower().Contains(s) ||
                 (m.PhoneNumber != null && m.PhoneNumber.Contains(search)) ||
                 m.CustomId.ToString().Contains(search));
+        }
 
         if (!string.IsNullOrWhiteSpace(academicYear))
             query = query.Where(m => m.AcademicYear == academicYear);

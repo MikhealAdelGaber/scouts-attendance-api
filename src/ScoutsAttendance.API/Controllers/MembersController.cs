@@ -83,12 +83,14 @@ public class MembersController : ControllerBase
             ? (int)Math.Pow(10, 6 - q.Length)
             : 1;
 
+        var qLower = q.ToLower();
         var results = await _uow.Members.Query()
             .Where(m => !groupId.HasValue || m.GroupId == groupId.Value)
             .Where(m =>
-                // Name search — Contains covers mid-name matches (LIKE '%q%')
-                m.FirstName.Contains(q) ||
-                m.LastName.Contains(q)  ||
+                // Name search — case-insensitive, partial match on first, last, or full name
+                m.FirstName.ToLower().Contains(qLower) ||
+                m.LastName.ToLower().Contains(qLower)  ||
+                (m.FirstName + " " + m.LastName).ToLower().Contains(qLower) ||
                 // CustomId prefix via integer division (pure arithmetic, no ToString)
                 (isNumeric && m.CustomId / divisor == customIdVal))
             .OrderBy(m => m.LastName).ThenBy(m => m.FirstName)

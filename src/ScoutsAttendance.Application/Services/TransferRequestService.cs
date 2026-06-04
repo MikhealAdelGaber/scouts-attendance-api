@@ -36,6 +36,9 @@ public interface ITransferRequestService
 
     /// <summary>Count of pending requests visible to the current user (for nav badge).</summary>
     Task<int> GetPendingCountAsync();
+
+    /// <summary>Create transfer requests for multiple members to the same target group.</summary>
+    Task<BulkTransferRequestResultDto> BulkCreateAsync(BulkCreateTransferRequestDto dto);
 }
 
 // ─── Implementation ───────────────────────────────────────────────────────────
@@ -318,6 +321,70 @@ public class TransferRequestService : ITransferRequestService
         }
 
         return await query.CountAsync();
+    }
+
+    // ── Bulk Create ───────────────────────────────────────────────────────────
+
+    public async Task<BulkTransferRequestResultDto> BulkCreateAsync(BulkCreateTransferRequestDto dto)
+    {
+        // Validate target group
+        var toGroup = await _uow.Groups.GetByIdAsync(dto.ToGroupId)
+            ?? throw new KeyNotFoundException($"Target group {dto.ToGroupId} not found");
+
+        // Load all requested members
+        var members = await _uow.Members.Query()
+            .Include(m => m.Group)
+            .Where(m => dto.MemberIds.Contains(m.Id) && !m.IsDeleted)
+            .ToListAsync();
+
+        // GroupLeader: only their own group's members
+        if (_currentUser.IsGroupLeader && _currentUser.GroupId.HasValue)
+        {
+            if (members.Any(m => m.GroupId != _currentUser.GroupId.Value))
+                throw new UnauthorizedAccessException("You can only request transfers for members in your own group.");
+        }
+
+        // Members already in the target group are invalid
+        members = members.Where(m => m.GroupId != dto.ToGroupId).ToList();
+
+        // Collect memberIds that already have a pending request
+        var memberIds = members.Select(m => m.Id).ToList();
+        var alreadyPending = await _uow.TransferRequests.Query()
+            .Where(r => memberIds.Contains(r.MemberId)
+                     && r.Status == TransferRequestStatus.Pending
+                     && !r.IsDeleted)
+            .Select(r => r.MemberId)
+            .ToListAsync();
+
+        var pendingSet = new HashSet<Guid>(alreadyPending);
+        int created = 0;
+        int skipped = 0;
+        var now     = DateTime.UtcNow;
+
+        foreach (var member in members)
+        {
+            if (pendingSet.Contains(member.Id)) { skipped++; continue; }
+
+            var fromGroup = member.Group ?? await _uow.Groups.GetByIdAsync(member.GroupId);
+            var request   = new MemberTransferRequest
+            {
+                MemberId      = member.Id,
+                MemberName    = member.FullName,
+                FromGroupId   = member.GroupId,
+                FromGroupName = fromGroup?.Name ?? string.Empty,
+                ToGroupId     = dto.ToGroupId,
+                ToGroupName   = toGroup.Name,
+                RequestedBy   = _currentUser.Username ?? "unknown",
+                RequestedAt   = now,
+                Status        = TransferRequestStatus.Pending,
+                Notes         = dto.Notes?.Trim()
+            };
+            await _uow.TransferRequests.AddAsync(request);
+            created++;
+        }
+
+        await _uow.SaveChangesAsync();
+        return new BulkTransferRequestResultDto { Created = created, Skipped = skipped, GroupName = toGroup.Name };
     }
 
     // ── Mapper ────────────────────────────────────────────────────────────────

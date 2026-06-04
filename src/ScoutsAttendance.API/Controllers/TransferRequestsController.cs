@@ -42,6 +42,29 @@ public class TransferRequestsController : ControllerBase
         catch (InvalidOperationException ex)   { return BadRequest(ApiResponse.Fail(ex.Message)); }
     }
 
+    // ── Bulk Create ───────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// POST /api/transfer-requests/bulk — create transfer requests for multiple members at once.
+    /// </summary>
+    [HttpPost("bulk")]
+    [Authorize(Roles = "SystemAdmin,GroupLeader")]
+    public async Task<ActionResult<ApiResponse<BulkTransferRequestResultDto>>> BulkCreate(
+        [FromBody] BulkCreateTransferRequestDto dto)
+    {
+        try
+        {
+            var result = await _service.BulkCreateAsync(dto);
+            var msg = result.Created == 0
+                ? $"No transfer requests created. {result.Skipped} member(s) already have a pending request."
+                : $"{result.Created} transfer request(s) submitted to {result.GroupName}" +
+                  (result.Skipped > 0 ? $" ({result.Skipped} skipped — already pending)" : "");
+            return Ok(ApiResponse<BulkTransferRequestResultDto>.Ok(result, msg));
+        }
+        catch (KeyNotFoundException ex)        { return NotFound(ApiResponse.Fail(ex.Message)); }
+        catch (UnauthorizedAccessException ex) { return StatusCode(403, ApiResponse.Fail(ex.Message)); }
+    }
+
     // ── List ──────────────────────────────────────────────────────────────────
 
     /// <summary>

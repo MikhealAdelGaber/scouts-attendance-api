@@ -38,6 +38,26 @@ public class CreateTransferRequestDto
     public string? Notes     { get; set; }
 }
 
+/// <summary>Create transfer requests for multiple members to the same target group.</summary>
+public class BulkCreateTransferRequestDto
+{
+    [Required, MinLength(1)]
+    public List<Guid> MemberIds { get; set; } = new();
+
+    [Required]
+    public Guid ToGroupId { get; set; }
+
+    [MaxLength(500)]
+    public string? Notes { get; set; }
+}
+
+public class BulkTransferRequestResultDto
+{
+    public int    Created   { get; set; }
+    public int    Skipped   { get; set; }   // already has a pending request
+    public string GroupName { get; set; } = string.Empty;
+}
+
 public class ReviewTransferRequestDto
 {
     [MaxLength(500)]

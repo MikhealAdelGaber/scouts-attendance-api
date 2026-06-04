@@ -159,6 +159,48 @@ public class MembersController : ControllerBase
         return Ok(ApiResponse<TransferDto>.Ok(result, "Member transferred successfully"));
     }
 
+    // ── Bulk Transfer Troop ───────────────────────────────────────────────────
+
+    /// <summary>Moves a batch of members to a new troop in one transaction.</summary>
+    [HttpPost("bulk-transfer-troop")]
+    [Authorize(Roles = "SystemAdmin,GroupLeader")]
+    public async Task<ActionResult<ApiResponse<BulkTransferResultDto>>> BulkTransferTroop(
+        [FromBody] BulkTransferTroopDto dto)
+    {
+        try
+        {
+            var result = await _service.BulkTransferTroopAsync(dto);
+            return Ok(ApiResponse<BulkTransferResultDto>.Ok(
+                result, $"{result.Count} member(s) moved to {result.TroopName}"));
+        }
+        catch (InvalidOperationException ex)  { return NotFound(ApiResponse.Fail(ex.Message)); }
+        catch (UnauthorizedAccessException ex) { return StatusCode(403, ApiResponse.Fail(ex.Message)); }
+    }
+
+    // ── Auto Promote Grades ───────────────────────────────────────────────────
+
+    /// <summary>Promotes every member to the next academic grade in one transaction.</summary>
+    [HttpPost("auto-promote-grades")]
+    [Authorize(Roles = "SystemAdmin,GroupLeader")]
+    public async Task<ActionResult<ApiResponse<AutoPromoteGradesResultDto>>> AutoPromoteGrades(
+        [FromBody] AutoPromoteGradesDto dto)
+    {
+        var result = await _service.AutoPromoteGradesAsync(dto.GroupId);
+        return Ok(ApiResponse<AutoPromoteGradesResultDto>.Ok(
+            result, $"{result.TotalPromoted} members promoted successfully"));
+    }
+
+    // ── Grade Distribution ────────────────────────────────────────────────────
+
+    /// <summary>Returns count of members per academic grade, in canonical order.</summary>
+    [HttpGet("grade-distribution")]
+    [Authorize(Roles = "SystemAdmin,GroupLeader")]
+    public async Task<ActionResult<ApiResponse<IEnumerable<GradeCountDto>>>> GetGradeDistribution()
+    {
+        var result = await _service.GetGradeDistributionAsync();
+        return Ok(ApiResponse<IEnumerable<GradeCountDto>>.Ok(result));
+    }
+
     /// <summary>Bulk update talaea / academic year / grade for all members in a troop at year start.</summary>
     [HttpPost("bulk-year-update")]
     [Authorize(Roles = "SystemAdmin,GroupLeader")]

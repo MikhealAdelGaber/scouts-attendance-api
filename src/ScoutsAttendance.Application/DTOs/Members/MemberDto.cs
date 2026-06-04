@@ -86,6 +86,48 @@ public class MemberSearchDto
     public string TroopName { get; set; } = string.Empty;
 }
 
+// ── Bulk Transfer ─────────────────────────────────────────────────────────────
+
+public class BulkTransferTroopDto
+{
+    [Required, MinLength(1)] public List<Guid> MemberIds { get; set; } = new();
+    [Required] public Guid TroopId { get; set; }
+}
+
+public class BulkTransferResultDto
+{
+    public int    Count     { get; set; }
+    public string TroopName { get; set; } = string.Empty;
+}
+
+// ── Auto Promote Grades ────────────────────────────────────────────────────────
+
+public class AutoPromoteGradesDto
+{
+    public Guid? GroupId { get; set; }   // null = current user's group
+}
+
+public class PromotionChangeItem
+{
+    public string OldGrade { get; set; } = string.Empty;
+    public string NewGrade { get; set; } = string.Empty;
+    public int    Count    { get; set; }
+}
+
+public class AutoPromoteGradesResultDto
+{
+    public int TotalPromoted { get; set; }
+    public List<PromotionChangeItem> Changes { get; set; } = new();
+}
+
+// ── Grade Distribution ─────────────────────────────────────────────────────────
+
+public class GradeCountDto
+{
+    public string Grade { get; set; } = string.Empty;
+    public int    Count { get; set; }
+}
+
 /// <summary>Bulk update academic year / grade at start of year.</summary>
 public class BulkYearUpdateDto
 {

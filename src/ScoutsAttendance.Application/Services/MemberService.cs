@@ -24,6 +24,9 @@ public interface IMemberService
     Task<byte[]>     GetQrCodeImageAsync(Guid id);
     Task<MemberDto?> GetByQrCodeAsync(string qrToken);
     Task<int>        BulkYearUpdateAsync(BulkYearUpdateDto dto);
+    Task<BulkTransferResultDto>      BulkTransferTroopAsync(BulkTransferTroopDto dto);
+    Task<AutoPromoteGradesResultDto> AutoPromoteGradesAsync(Guid? groupId);
+    Task<IEnumerable<GradeCountDto>> GetGradeDistributionAsync();
 }
 
 public class MemberService : IMemberService
@@ -278,6 +281,128 @@ public class MemberService : IMemberService
 
         await _uow.SaveChangesAsync();
         return members.Count;
+    }
+
+    // ── Bulk Transfer Troop ───────────────────────────────────────────────────
+
+    public async Task<BulkTransferResultDto> BulkTransferTroopAsync(BulkTransferTroopDto dto)
+    {
+        var troop = await _uow.Troops.GetByIdAsync(dto.TroopId)
+            ?? throw new InvalidOperationException("Troop not found");
+
+        var callerGroupId = _currentUser.IsSystemAdmin ? (Guid?)null : _currentUser.GroupId;
+
+        // Validate target troop belongs to caller's group (non-admins only)
+        if (callerGroupId.HasValue && troop.GroupId != callerGroupId.Value)
+            throw new UnauthorizedAccessException("Target troop does not belong to your group");
+
+        var members = await _uow.Members.Query()
+            .Where(m => dto.MemberIds.Contains(m.Id) && !m.IsDeleted)
+            .ToListAsync();
+
+        // Validate all members belong to caller's group
+        if (callerGroupId.HasValue && members.Any(m => m.GroupId != callerGroupId.Value))
+            throw new UnauthorizedAccessException("Some members do not belong to your group");
+
+        foreach (var m in members)
+        {
+            m.TroopId    = troop.Id;
+            m.GroupId    = troop.GroupId;
+            m.UpdatedAt  = DateTime.UtcNow;
+            _uow.Members.Update(m);
+        }
+        await _uow.SaveChangesAsync();
+
+        return new BulkTransferResultDto { Count = members.Count, TroopName = troop.Name };
+    }
+
+    // ── Auto Promote Grades ───────────────────────────────────────────────────
+
+    private static readonly Dictionary<string, string> PromotionMap = new()
+    {
+        ["3 ابتدائي"] = "4 ابتدائي",
+        ["4 ابتدائي"] = "5 ابتدائي",
+        ["5 ابتدائي"] = "6 ابتدائي",
+        ["6 ابتدائي"] = "1 اعدادي",
+        ["1 اعدادي"]  = "2 اعدادي",
+        ["2 اعدادي"]  = "3 اعدادي",
+        ["3 اعدادي"]  = "1 ثانوي",
+        ["1 ثانوي"]   = "2 ثانوي",
+        ["2 ثانوي"]   = "3 ثانوي",
+        ["3 ثانوي"]   = "1 جامعة",
+        ["1 جامعة"]   = "2 جامعة",
+        ["2 جامعة"]   = "3 جامعة",
+        ["3 جامعة"]   = "4 جامعة",
+        ["4 جامعة"]   = "5 جامعة",
+        ["5 جامعة"]   = "6 جامعة",
+        ["6 جامعة"]   = "خريج",
+        ["خريج"]      = "خريج",        // no change
+    };
+
+    public async Task<AutoPromoteGradesResultDto> AutoPromoteGradesAsync(Guid? groupId)
+    {
+        var effectiveGroupId = _currentUser.IsSystemAdmin ? groupId : _currentUser.GroupId;
+
+        var query = _uow.Members.Query()
+            .Where(m => !m.IsDeleted && m.AcademicYear != null);
+        if (effectiveGroupId.HasValue)
+            query = query.Where(m => m.GroupId == effectiveGroupId.Value);
+
+        var members = await query.ToListAsync();
+
+        var changes  = new Dictionary<(string Old, string New), int>();
+        int promoted = 0;
+
+        foreach (var m in members)
+        {
+            if (m.AcademicYear is null) continue;
+            if (!PromotionMap.TryGetValue(m.AcademicYear, out var next)) continue;
+            if (next == m.AcademicYear) continue;          // خريج — no change
+
+            var key = (m.AcademicYear, next);
+            changes[key] = (changes.TryGetValue(key, out var c) ? c : 0) + 1;
+            m.AcademicYear = next;
+            m.UpdatedAt    = DateTime.UtcNow;
+            _uow.Members.Update(m);
+            promoted++;
+        }
+
+        await _uow.SaveChangesAsync();
+
+        var sorted = changes
+            .Select(kv => new PromotionChangeItem
+                { OldGrade = kv.Key.Old, NewGrade = kv.Key.New, Count = kv.Value })
+            .OrderBy(c => Array.IndexOf(AcademicGrades.AllowedValues, c.OldGrade))
+            .ToList();
+
+        return new AutoPromoteGradesResultDto { TotalPromoted = promoted, Changes = sorted };
+    }
+
+    // ── Grade Distribution ────────────────────────────────────────────────────
+
+    public async Task<IEnumerable<GradeCountDto>> GetGradeDistributionAsync()
+    {
+        var groupId = _currentUser.IsSystemAdmin ? (Guid?)null : _currentUser.GroupId;
+
+        var query = _uow.Members.Query()
+            .Where(m => !m.IsDeleted && m.AcademicYear != null);
+        if (groupId.HasValue)
+            query = query.Where(m => m.GroupId == groupId.Value);
+
+        var raw = await query
+            .GroupBy(m => m.AcademicYear!)
+            .Select(g => new { Grade = g.Key, Count = g.Count() })
+            .ToListAsync();
+
+        // Return in canonical grade order
+        return AcademicGrades.AllowedValues
+            .Select(grade => new GradeCountDto
+            {
+                Grade = grade,
+                Count = raw.FirstOrDefault(r => r.Grade == grade)?.Count ?? 0
+            })
+            .Where(d => d.Count > 0)
+            .ToList();
     }
 
     private static MemberDto MapToDto(Domain.Entities.Member m) => new()

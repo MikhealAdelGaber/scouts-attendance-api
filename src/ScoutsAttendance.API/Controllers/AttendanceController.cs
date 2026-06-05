@@ -62,32 +62,45 @@ public class AttendanceController : ControllerBase
     [Authorize(Roles = "SystemAdmin,GroupLeader,AttendanceOnly")]
     public async Task<ActionResult<ApiResponse<AttendanceDto>>> Mark([FromBody] MarkAttendanceDto dto)
     {
-        var result = await _service.MarkAttendanceAsync(dto);
-        // Broadcast to all watchers of this event in real-time
-        await _hub.Clients.Group($"event-{dto.EventId}").SendAsync("AttendanceUpdated", result);
-        return Ok(ApiResponse<AttendanceDto>.Ok(result, "Attendance marked"));
+        try
+        {
+            var result = await _service.MarkAttendanceAsync(dto);
+            await _hub.Clients.Group($"event-{dto.EventId}").SendAsync("AttendanceUpdated", result);
+            return Ok(ApiResponse<AttendanceDto>.Ok(result, "Attendance marked"));
+        }
+        catch (InvalidOperationException ex) { return BadRequest(ApiResponse.Fail(ex.Message)); }
+        catch (KeyNotFoundException     ex) { return NotFound(ApiResponse.Fail(ex.Message)); }
     }
 
     [HttpPost("bulk")]
     [Authorize(Roles = "SystemAdmin,GroupLeader,AttendanceOnly")]
     public async Task<ActionResult<ApiResponse<IEnumerable<AttendanceDto>>>> BulkMark([FromBody] BulkAttendanceDto dto)
     {
-        var result = (await _service.BulkMarkAsync(dto)).ToList();
-        // Broadcast all updates
-        foreach (var record in result)
-            await _hub.Clients.Group($"event-{dto.EventId}").SendAsync("AttendanceUpdated", record);
-        return Ok(ApiResponse<IEnumerable<AttendanceDto>>.Ok(result, "Bulk attendance marked"));
+        try
+        {
+            var result = (await _service.BulkMarkAsync(dto)).ToList();
+            foreach (var record in result)
+                await _hub.Clients.Group($"event-{dto.EventId}").SendAsync("AttendanceUpdated", record);
+            return Ok(ApiResponse<IEnumerable<AttendanceDto>>.Ok(result, "Bulk attendance marked"));
+        }
+        catch (InvalidOperationException ex) { return BadRequest(ApiResponse.Fail(ex.Message)); }
+        catch (KeyNotFoundException     ex) { return NotFound(ApiResponse.Fail(ex.Message)); }
     }
 
     [HttpPost("qr")]
     [Authorize(Roles = "SystemAdmin,GroupLeader,AttendanceOnly")]
     public async Task<ActionResult<ApiResponse<AttendanceDto>>> MarkByQr([FromBody] QrAttendanceDto dto)
     {
-        var result = await _service.MarkByQrAsync(dto);
-        if (result is null)
-            return BadRequest(ApiResponse.Fail("Invalid QR code or member not found"));
+        try
+        {
+            var result = await _service.MarkByQrAsync(dto);
+            if (result is null)
+                return BadRequest(ApiResponse.Fail("Invalid QR code — member not found."));
 
-        await _hub.Clients.Group($"event-{dto.EventId}").SendAsync("AttendanceUpdated", result);
-        return Ok(ApiResponse<AttendanceDto>.Ok(result, "Attendance marked via QR"));
+            await _hub.Clients.Group($"event-{dto.EventId}").SendAsync("AttendanceUpdated", result);
+            return Ok(ApiResponse<AttendanceDto>.Ok(result, "Attendance marked via QR"));
+        }
+        catch (InvalidOperationException ex) { return BadRequest(ApiResponse.Fail(ex.Message)); }
+        catch (KeyNotFoundException     ex) { return NotFound(ApiResponse.Fail(ex.Message)); }
     }
 }

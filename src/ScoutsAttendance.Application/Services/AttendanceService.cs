@@ -140,6 +140,19 @@ public class AttendanceService : IAttendanceService
             .FirstOrDefaultAsync(m => m.Id == dto.MemberId && !m.IsDeleted)
             ?? throw new KeyNotFoundException($"Member {dto.MemberId} not found");
 
+        // ── SECURITY: Group membership check ─────────────────────────────────
+        // Reject if the member belongs to a different group than the event.
+        // This prevents cross-group attendance and illegitimate points.
+        if (member.GroupId != ev.GroupId)
+            throw new InvalidOperationException(
+                $"Member \"{member.FullName}\" does not belong to this group. Attendance not recorded.");
+
+        // Also reject if the event is scoped to a specific troop and the member
+        // is not in that troop (they may be in the same group but a different troop).
+        if (ev.TroopId.HasValue && member.TroopId != ev.TroopId.Value)
+            throw new InvalidOperationException(
+                $"Member \"{member.FullName}\" is not in the troop assigned to this event. Attendance not recorded.");
+
         // Auto-promote Absent → Excused if the member has an active excuse
         // covering the EVENT's scheduled date (not today's date).
         var effectiveStatus = dto.Status;

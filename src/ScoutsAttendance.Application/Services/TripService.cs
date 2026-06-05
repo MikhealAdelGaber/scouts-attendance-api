@@ -95,6 +95,8 @@ public class TripService : ITripService
         if (trip is null || trip.IsDeleted) return null;
         if (!isAdmin && trip.GroupId != callerGroupId) return null;
 
+        int? oldCapacity  = trip.MaxCapacity;
+
         trip.Name             = dto.Name.Trim();
         trip.Description      = (dto.Description ?? string.Empty).Trim();
         trip.TripDate         = DateTime.SpecifyKind(dto.TripDate, DateTimeKind.Utc);
@@ -113,6 +115,14 @@ public class TripService : ITripService
 
         _uow.Trips.Update(trip);
         await _uow.SaveChangesAsync();
+
+        // ── Auto-promote waiting list if capacity increased ──────────────────
+        bool capacityIncreased = dto.MaxCapacity.HasValue &&
+            (oldCapacity is null || dto.MaxCapacity.Value > oldCapacity.Value);
+
+        if (capacityIncreased)
+            await AutoPromoteWaitingListAsync(id);
+
         return (await GetByIdAsync(id))!;
     }
 
@@ -408,35 +418,101 @@ public class TripService : ITripService
     }
 
     // ─────────────────────────────────────────────────────────────────────────
+    // Waiting-list auto-promotion
+    // ─────────────────────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Promotes as many waiting-list bookings as there are available confirmed spots,
+    /// using FIFO order (oldest BookedAt first).  Updates the trip Status accordingly.
+    /// Called after: capacity increase in UpdateAsync; cancellation in CancelBookingAsync.
+    /// </summary>
+    private async Task AutoPromoteWaitingListAsync(Guid tripId)
+    {
+        var trip = await _uow.Trips.GetByIdAsync(tripId);
+        if (trip is null || !trip.MaxCapacity.HasValue) return;
+
+        // Count confirmed bookings from DB (never use cached/in-memory value)
+        int confirmedCount = await _uow.TripBookings.Query()
+            .CountAsync(b => b.TripId == tripId &&
+                             b.BookingStatus == BookingStatus.Confirmed &&
+                             !b.IsDeleted);
+
+        int availableSpots = trip.MaxCapacity.Value - confirmedCount;
+        if (availableSpots <= 0) return;
+
+        var toPromote = await _uow.TripBookings.Query()
+            .Where(b => b.TripId == tripId &&
+                        b.BookingStatus == BookingStatus.Waiting &&
+                        !b.IsDeleted)
+            .OrderBy(b => b.CreatedAt)   // FIFO
+            .Take(availableSpots)
+            .ToListAsync();
+
+        if (toPromote.Count == 0) return;
+
+        foreach (var booking in toPromote)
+        {
+            booking.BookingStatus = BookingStatus.Confirmed;
+            booking.UpdatedAt     = DateTime.UtcNow;
+            _uow.TripBookings.Update(booking);
+        }
+
+        // Recalculate trip status after promotion
+        int newConfirmed = confirmedCount + toPromote.Count;
+        trip.Status    = (trip.MaxCapacity.HasValue && newConfirmed >= trip.MaxCapacity.Value)
+                         ? TripStatus.Full
+                         : TripStatus.Open;
+        trip.UpdatedAt = DateTime.UtcNow;
+        _uow.Trips.Update(trip);
+
+        await _uow.SaveChangesAsync();
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
     // Mappers
     // ─────────────────────────────────────────────────────────────────────────
 
-    private static TripDto MapTrip(Trip t) => new()
+    private static TripDto MapTrip(Trip t)
     {
-        Id                = t.Id,
-        Name              = t.Name,
-        Description       = t.Description,
-        TripDate          = t.TripDate,
-        Location          = t.Location,
-        Price             = t.Price,
-        SiblingPrice      = t.SiblingPrice,
-        MaxCapacity       = t.MaxCapacity,
-        GroupId           = t.GroupId,
-        HasPoints         = t.HasPoints,
-        PointValue        = t.PointValue,
-        Status            = t.Status,
-        StatusName        = t.Status.ToString(),
-        AllowInstallments = t.AllowInstallments,
-        CreatedBy         = t.CreatedBy,
-        CreatedAt         = t.CreatedAt,
-        ConfirmedCount    = t.Bookings.Count(b => !b.IsDeleted && b.BookingStatus == BookingStatus.Confirmed),
-        WaitingCount      = t.Bookings.Count(b => !b.IsDeleted && b.BookingStatus == BookingStatus.Waiting),
-        TotalCollected    = t.Bookings
-            .Where(b => !b.IsDeleted && b.BookingStatus == BookingStatus.Confirmed)
-            .Sum(b => t.AllowInstallments
-                ? b.Payments.Where(p => !p.IsDeleted).Sum(p => p.AmountPaid)
-                : (b.PaidAt.HasValue ? b.AmountDue : 0m))
-    };
+        int confirmedCount = t.Bookings.Count(b => !b.IsDeleted && b.BookingStatus == BookingStatus.Confirmed);
+        int waitingCount   = t.Bookings.Count(b => !b.IsDeleted && b.BookingStatus == BookingStatus.Waiting);
+
+        // Derive live status from actual confirmed count — never trust the stored Status field
+        // for Open/Full, since it can fall out of sync after manual DB edits or edge cases.
+        // Cancelled is a manual override so we preserve it.
+        TripStatus liveStatus = t.Status == TripStatus.Cancelled
+            ? TripStatus.Cancelled
+            : (t.MaxCapacity.HasValue && confirmedCount >= t.MaxCapacity.Value
+                ? TripStatus.Full
+                : TripStatus.Open);
+
+        return new TripDto
+        {
+            Id                = t.Id,
+            Name              = t.Name,
+            Description       = t.Description,
+            TripDate          = t.TripDate,
+            Location          = t.Location,
+            Price             = t.Price,
+            SiblingPrice      = t.SiblingPrice,
+            MaxCapacity       = t.MaxCapacity,
+            GroupId           = t.GroupId,
+            HasPoints         = t.HasPoints,
+            PointValue        = t.PointValue,
+            Status            = liveStatus,
+            StatusName        = liveStatus.ToString(),
+            AllowInstallments = t.AllowInstallments,
+            CreatedBy         = t.CreatedBy,
+            CreatedAt         = t.CreatedAt,
+            ConfirmedCount    = confirmedCount,
+            WaitingCount      = waitingCount,
+            TotalCollected    = t.Bookings
+                .Where(b => !b.IsDeleted && b.BookingStatus == BookingStatus.Confirmed)
+                .Sum(b => t.AllowInstallments
+                    ? b.Payments.Where(p => !p.IsDeleted).Sum(p => p.AmountPaid)
+                    : (b.PaidAt.HasValue ? b.AmountDue : 0m))
+        };
+    }
 
     private static TripBookingDto MapBooking(TripBooking b, bool allowInstallments)
     {

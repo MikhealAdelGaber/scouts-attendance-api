@@ -85,7 +85,11 @@ builder.Services.AddCors(options =>
     options.AddPolicy("AllowAngular", policy =>
         policy.WithOrigins(
                 "http://localhost:4200",
-                "https://MikhealAdelGaber.github.io"   // GitHub Pages frontend
+                "http://localhost:4201",
+                "https://localhost:4200",
+                "https://MikhealAdelGaber.github.io",
+                "http://mikha.runasp.net",
+                "https://mikha.runasp.net"
               )
               .AllowAnyMethod()
               .AllowAnyHeader()
@@ -111,10 +115,17 @@ app.UseAuthorization();
 app.MapControllers();
 app.MapHub<AttendanceHub>("/hubs/attendance");
 
-using (var scope = app.Services.CreateScope())
+// Seed the database — wrapped so a transient DB failure never crashes the app
+try
 {
+    using var scope = app.Services.CreateScope();
     var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
     await DbSeeder.SeedAsync(db);
+}
+catch (Exception ex)
+{
+    var logger = app.Services.GetRequiredService<ILogger<Program>>();
+    logger.LogError(ex, "DB seeder failed — app will still start. Check DB connection.");
 }
 
 app.Run();

@@ -89,19 +89,12 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
 builder.Services.AddCors(options =>
 {
     options.AddPolicy("AllowAngular", policy =>
-        policy.WithOrigins(
-                "http://localhost:4200",
-                "http://localhost:4201",
-                "https://localhost:4200",
-                "https://MikhealAdelGaber.github.io",
-                "http://mikha.runasp.net",
-                "https://mikha.runasp.net",
-                "http://mikha-a.runasp.net",
-                "https://mikha-a.runasp.net"
-              )
+        // AllowAnyOrigin is safe here because we use JWT tokens in the Authorization
+        // header — NOT cookies. No credentials (cookies/sessions) are used, so
+        // AllowAnyOrigin does not create a CSRF vulnerability.
+        policy.AllowAnyOrigin()
               .AllowAnyMethod()
-              .AllowAnyHeader()
-              .AllowCredentials());
+              .AllowAnyHeader());
 });
 
 var app = builder.Build();

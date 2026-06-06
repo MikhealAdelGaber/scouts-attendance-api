@@ -70,9 +70,19 @@ public class ProjectService : IProjectService
 
     public async Task<ProjectDto> CreateAsync(CreateProjectDto dto)
     {
-        var groupId = _currentUser.IsSystemAdmin
-            ? (_currentUser.GroupId ?? throw new InvalidOperationException("SystemAdmin must have a GroupId context"))
-            : (_currentUser.GroupId ?? throw new InvalidOperationException("No group context"));
+        Guid groupId;
+        if (_currentUser.IsSystemAdmin)
+        {
+            // SystemAdmin has no automatic GroupId — they must supply one in the request body
+            if (!dto.GroupId.HasValue || dto.GroupId == Guid.Empty)
+                throw new InvalidOperationException("SystemAdmin must specify a GroupId when creating a project.");
+            groupId = dto.GroupId.Value;
+        }
+        else
+        {
+            groupId = _currentUser.GroupId
+                ?? throw new InvalidOperationException("No group context — cannot create project.");
+        }
 
         var project = new Project
         {

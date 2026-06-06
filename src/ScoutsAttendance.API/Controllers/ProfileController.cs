@@ -28,4 +28,20 @@ public class ProfileController : ControllerBase
         var ok = await _service.ChangePasswordAsync(dto);
         return ok ? Ok(ApiResponse.Ok("Password changed successfully")) : BadRequest(ApiResponse.Fail("Failed to change password"));
     }
+
+    /// <summary>
+    /// POST /api/profile/verify-password
+    /// Verifies the caller's own password — used by security dialogs before destructive actions.
+    /// Accessible to ALL authenticated roles (not just SystemAdmin).
+    /// </summary>
+    [HttpPost("verify-password")]
+    public async Task<ActionResult<ApiResponse>> VerifyPassword([FromBody] VerifyPasswordBodyDto dto)
+    {
+        var ok = await _service.VerifyCurrentPasswordAsync(dto.Password);
+        return ok
+            ? Ok(ApiResponse.Ok("Password verified"))
+            : BadRequest(ApiResponse.Fail("Incorrect password. Please try again."));
+    }
 }
+
+public record VerifyPasswordBodyDto(string Password);

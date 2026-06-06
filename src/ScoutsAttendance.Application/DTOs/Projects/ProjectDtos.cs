@@ -26,6 +26,8 @@ public class CreateProjectDto
     [MaxLength(1000)]          public string?  Description { get; set; }
     [Required, Range(1, 10000)] public decimal MaxScore    { get; set; }
     public Guid?    TroopId     { get; set; }
+    /// <summary>Required for SystemAdmin (who has no automatic group). Ignored for other roles.</summary>
+    public Guid?    GroupId     { get; set; }
 }
 
 public class UpdateProjectDto

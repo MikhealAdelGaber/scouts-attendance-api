@@ -22,6 +22,8 @@ public interface IProfileService
 {
     Task<ProfileDto?> GetCurrentAsync();
     Task<bool>        ChangePasswordAsync(ChangePasswordDto dto);
+    /// <summary>Verifies the current user's password without changing it. Used by security dialogs.</summary>
+    Task<bool>        VerifyCurrentPasswordAsync(string plainPassword);
 }
 
 public class ProfileService : IProfileService
@@ -56,6 +58,12 @@ public class ProfileService : IProfileService
             user.CanEditMembers,
             user.CanCreateEvents,
             user.CreatedAt);
+    }
+
+    public async Task<bool> VerifyCurrentPasswordAsync(string plainPassword)
+    {
+        var user = await _uow.Users.GetByIdAsync(_currentUser.UserId);
+        return user is not null && BCrypt.Net.BCrypt.Verify(plainPassword, user.PasswordHash);
     }
 
     public async Task<bool> ChangePasswordAsync(ChangePasswordDto dto)

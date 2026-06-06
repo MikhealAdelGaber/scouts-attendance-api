@@ -1,315 +1,139 @@
 using Microsoft.EntityFrameworkCore;
-using QuestPDF.Fluent;
-using QuestPDF.Helpers;
-using QuestPDF.Infrastructure;
+using PdfSharpCore.Drawing;
+using PdfSharpCore.Pdf;
 using ScoutsAttendance.Application.Interfaces;
 using ScoutsAttendance.Application.Services;
-using ScoutsAttendance.Domain.Entities;
 
 namespace ScoutsAttendance.Infrastructure.Services;
 
 /// <summary>
 /// Generates a print-ready A4 PDF of all member QR codes, grouped by Troop.
-/// Each QR encodes the member's "SCOUT-XXXXXX" token (same as the scanning flow).
-/// Uses QuestPDF (community licence) + QRCoder (already in the project).
+/// Uses PdfSharpCore (pure managed — works on win-x86, win-x64, linux, etc.)
 /// </summary>
 public sealed class QrPdfExportService : IQrPdfExportService
 {
     private readonly IUnitOfWork         _uow;
     private readonly ICurrentUserService _currentUser;
     private readonly IQrCodeService      _qrCode;
-    private readonly IPhotoService       _photo;
 
-    // ── Brand colours (match the Angular app) ────────────────────────────────
-    private const string PrimaryDark  = "#1a237e";
-    private const string Primary      = "#3f51b5";
-    private const string TextPrimary  = "#1a1a2e";
-    private const string TextSecond   = "#5a6379";
-    private const string TextHint     = "#9e9e9e";
-    private const string BorderColor  = "#e0e0e0";
-    private const string White        = "#ffffff";
+    private const double PageW   = 595;   // A4 pt
+    private const double PageH   = 842;
+    private const double Margin  = 36;
+    private const double Cols    = 3;
+    private const double CardH   = 170;
+    private const double HeaderH = 40;
+    private const double FooterH = 22;
 
-    // ── Arabic font helpers ───────────────────────────────────────────────────
-    // Registered in DependencyInjection.cs from the system's Noto Naskh Arabic TTF.
-    private const string ArabicFont = "Noto Naskh Arabic";
-    private const string LatinFont  = "Lato";
+    private static readonly XColor ColPrimDark = XColor.FromArgb(0x1a, 0x23, 0x7e);
+    private static readonly XColor ColPrimary  = XColor.FromArgb(0x3f, 0x51, 0xb5);
+    private static readonly XColor ColText2    = XColor.FromArgb(0x5a, 0x63, 0x79);
+    private static readonly XColor ColBorder   = XColor.FromArgb(0xe0, 0xe0, 0xe0);
 
-    /// <summary>Returns true when the string contains any Arabic/RTL characters.</summary>
-    private static bool IsArabic(string? text) =>
-        text != null && text.Any(c => c >= '؀' && c <= 'ۿ');
-
-    /// <summary>Picks the right font family for a given string.</summary>
-    private static string FontFor(string? text) =>
-        IsArabic(text) ? ArabicFont : LatinFont;
-
-    public QrPdfExportService(
-        IUnitOfWork uow,
-        ICurrentUserService currentUser,
-        IQrCodeService qrCode,
-        IPhotoService photo)
+    public QrPdfExportService(IUnitOfWork uow, ICurrentUserService currentUser, IQrCodeService qrCode)
     {
-        _uow         = uow;
-        _currentUser = currentUser;
-        _qrCode      = qrCode;
-        _photo       = photo;
+        _uow = uow; _currentUser = currentUser; _qrCode = qrCode;
     }
 
     public async Task<(byte[] Bytes, string Filename)> ExportAsync()
     {
-        // ── 1. Load members (scoped to caller's role) ─────────────────────────
-        var query = _uow.Members.Query()
-            .IgnoreQueryFilters()                    // don't let soft-deleted Troop filter out members
-            .Include(m => m.Troop)
-            .Where(m => !m.IsDeleted);
+        var query = _uow.Members.Query().IgnoreQueryFilters()
+            .Include(m => m.Troop).Where(m => !m.IsDeleted);
 
         if (_currentUser.HasTroopScope && _currentUser.TroopId.HasValue)
-        {
-            // AttendanceOnly / scoped GroupLeader → single troop
             query = query.Where(m => m.TroopId == _currentUser.TroopId.Value);
-        }
         else if (!_currentUser.IsSystemAdmin && _currentUser.GroupId.HasValue)
-        {
-            // GroupLeader without explicit troop → whole group
             query = query.Where(m => m.GroupId == _currentUser.GroupId.Value);
-        }
-        // SystemAdmin → no additional filter (all members)
 
-        var members = await query
-            .OrderBy(m => m.LastName)
-            .ThenBy(m => m.FirstName)
-            .ToListAsync();
+        var members = await query.OrderBy(m => m.LastName).ThenBy(m => m.FirstName).ToListAsync();
 
-        // ── 2. Group by Troop (unassigned last) ───────────────────────────────
-        var troopGroups = members
-            .GroupBy(m => new
-            {
-                TroopId   = m.TroopId,
-                TroopName = m.Troop?.Name ?? "Unassigned"
-            })
-            .OrderBy(g => g.Key.TroopName == "Unassigned" ? "￿" : g.Key.TroopName)
-            .Select(g => (
-                TroopName : g.Key.TroopName,
-                Members   : g.OrderBy(m => m.LastName).ThenBy(m => m.FirstName).ToList()
-            ))
+        var groups = members
+            .GroupBy(m => m.Troop?.Name ?? "Unassigned")
+            .OrderBy(g => g.Key == "Unassigned" ? "zzz" : g.Key)
+            .Select(g => (g.Key, g.ToList()))
             .ToList();
 
-        // ── 3. Determine scope label & filename ───────────────────────────────
-        var scopeLabel = _currentUser.IsSystemAdmin
-            ? "All Troops"
-            : (troopGroups.Count == 1 ? troopGroups[0].TroopName : "Group");
+        var scope    = _currentUser.IsSystemAdmin ? "All" : (groups.Count == 1 ? groups[0].Key : "Group");
+        var filename = $"QR-Codes-{DateTime.UtcNow:yyyy-MM-dd}.pdf";
 
-        var safeScope = string.Concat(scopeLabel.Split(Path.GetInvalidFileNameChars()));
-        var filename  = $"QR-Codes-{safeScope}-{DateTime.UtcNow:yyyy-MM-dd}.pdf";
+        var doc = new PdfDocument();
+        doc.Info.Title = "Member QR Codes";
 
-        // ── 4. Pre-fetch profile photos (best-effort, in parallel) ────────────
-        var photoMap = new Dictionary<Guid, byte[]?>();
-        await Task.WhenAll(members.Select(async m =>
+        AddCover(doc, scope, members.Count, groups.Count);
+        foreach (var (troop, list) in groups)
+            AddTroopSection(doc, troop, list);
+
+        using var ms = new MemoryStream();
+        doc.Save(ms, false);
+        return (ms.ToArray(), filename);
+    }
+
+    private static void AddCover(PdfDocument doc, string scope, int total, int troops)
+    {
+        var page = doc.AddPage(); page.Width = PageW; page.Height = PageH;
+        using var g = XGraphics.FromPdfPage(page);
+        var f32 = new XFont("Arial", 32, XFontStyle.Bold);
+        var f18 = new XFont("Arial", 18, XFontStyle.Regular);
+        var f12 = new XFont("Arial", 12, XFontStyle.Regular);
+        double cy = PageH / 2 - 70;
+        g.DrawString("Member QR Codes", f32, new XSolidBrush(ColPrimDark), new XRect(0, cy, PageW, 44), XStringFormats.Center); cy += 50;
+        g.DrawString(scope, f18, new XSolidBrush(ColPrimary), new XRect(0, cy, PageW, 30), XStringFormats.Center); cy += 45;
+        g.DrawLine(new XPen(ColBorder), Margin, cy, PageW - Margin, cy); cy += 18;
+        g.DrawString($"Exported: {DateTime.Now:MMMM dd, yyyy}", f12, new XSolidBrush(ColText2), new XRect(0, cy, PageW, 20), XStringFormats.Center); cy += 26;
+        g.DrawString($"{total} members  ·  {troops} troop(s)", f12, new XSolidBrush(ColText2), new XRect(0, cy, PageW, 20), XStringFormats.Center);
+    }
+
+    private void AddTroopSection(PdfDocument doc, string troop, List<Domain.Entities.Member> list)
+    {
+        double colW        = (PageW - Margin * 2) / Cols;
+        int    rowsPerPage = Math.Max(1, (int)Math.Floor((PageH - Margin - HeaderH - FooterH) / CardH));
+        int    perPage     = rowsPerPage * (int)Cols;
+
+        for (int start = 0; start < list.Count; start += perPage)
         {
-            if (!string.IsNullOrWhiteSpace(m.ProfileImageUrl))
+            var page = doc.AddPage(); page.Width = PageW; page.Height = PageH;
+            using var g = XGraphics.FromPdfPage(page);
+
+            var fHead = new XFont("Arial", 13, XFontStyle.Bold);
+            var fSub  = new XFont("Arial",  9, XFontStyle.Regular);
+            var fName = new XFont("Arial",  8, XFontStyle.Bold);
+            var fId   = new XFont("Arial",  8, XFontStyle.Regular);
+            var fGrd  = new XFont("Arial", 7.5, XFontStyle.Regular);
+
+            // Header
+            g.DrawRectangle(new XSolidBrush(ColPrimDark), 0, 0, PageW, HeaderH);
+            g.DrawString(troop, fHead, new XSolidBrush(XColors.White), new XRect(Margin, 0, PageW - Margin * 2, HeaderH), XStringFormats.CenterLeft);
+            g.DrawString($"{list.Count} members", fSub, new XSolidBrush(XColor.FromArgb(0xc5, 0xca, 0xe9)), new XRect(0, 0, PageW - Margin, HeaderH), XStringFormats.CenterRight);
+
+            // Cards
+            var chunk = list.Skip(start).Take(perPage).ToList();
+            for (int i = 0; i < chunk.Count; i++)
             {
-                try { photoMap[m.Id] = await _photo.GetPhotoBytesAsync(m.ProfileImageUrl); }
-                catch { photoMap[m.Id] = null; }
-            }
-        }));
+                var m   = chunk[i];
+                int col = i % (int)Cols;
+                int row = i / (int)Cols;
+                double x = Margin + col * colW;
+                double y = HeaderH + row * CardH + 6;
 
-        // ── 5. Build PDF ──────────────────────────────────────────────────────
-        var pdfBytes = Document.Create(container =>
-        {
-            BuildCoverPage(container, scopeLabel, members.Count, troopGroups.Count);
+                g.DrawRectangle(new XPen(ColBorder, 0.5), x + 2, y, colW - 4, CardH - 4);
 
-            foreach (var (troopName, troopMembers) in troopGroups)
-                BuildTroopPage(container, troopName, troopMembers, photoMap);
-        })
-        .GeneratePdf();
-
-        return (pdfBytes, filename);
-    }
-
-    // ── Cover page ────────────────────────────────────────────────────────────
-
-    private static void BuildCoverPage(
-        IDocumentContainer container,
-        string scopeLabel,
-        int totalMembers,
-        int totalTroops)
-    {
-        container.Page(page =>
-        {
-            page.Size(PageSizes.A4);
-            page.Margin(2, Unit.Centimetre);
-
-            page.Content()
-                .AlignCenter()
-                .AlignMiddle()
-                .Column(col =>
+                try
                 {
-                    col.Spacing(16);
-
-                    // Title
-                    col.Item()
-                        .Text("Member QR Codes")
-                        .Bold().FontSize(36).FontColor(PrimaryDark);
-
-                    // Scope
-                    col.Item()
-                        .Text(scopeLabel)
-                        .FontSize(20).FontColor(Primary);
-
-                    // Divider
-                    col.Item().PaddingVertical(8)
-                        .LineHorizontal(1).LineColor(BorderColor);
-
-                    // Export date
-                    col.Item()
-                        .Text($"Exported: {DateTime.Now:MMMM dd, yyyy}")
-                        .FontSize(13).FontColor(TextHint);
-
-                    // Counts
-                    col.Item().PaddingTop(4)
-                        .Text($"{totalMembers} members  ·  {totalTroops} troop(s)")
-                        .FontSize(12).FontColor(TextSecond);
-                });
-        });
-    }
-
-    // ── Per-troop section page(s) ─────────────────────────────────────────────
-
-    private void BuildTroopPage(
-        IDocumentContainer container,
-        string troopName,
-        List<Member> troopMembers,
-        Dictionary<Guid, byte[]?> photoMap)
-    {
-        container.Page(page =>
-        {
-            page.Size(PageSizes.A4);
-            page.MarginHorizontal(1.2f, Unit.Centimetre);
-            page.MarginTop(0.4f, Unit.Centimetre);
-            page.MarginBottom(1.2f, Unit.Centimetre);
-
-            // ── Header band ──────────────────────────────────────────────────
-            page.Header()
-                .Background(PrimaryDark)
-                .Padding(10)
-                .Row(row =>
-                {
-                    row.RelativeItem()
-                        .AlignMiddle()
-                        .Text(troopName)
-                        .Bold().FontSize(15).FontColor(White)
-                        .FontFamily(FontFor(troopName));
-
-                    row.AutoItem()
-                        .AlignMiddle()
-                        .AlignRight()
-                        .Text($"{troopMembers.Count} member{(troopMembers.Count != 1 ? "s" : "")}")
-                        .FontSize(10).FontColor($"#c5cae9");
-                });
-
-            // ── 3-column QR grid ─────────────────────────────────────────────
-            page.Content()
-                .PaddingTop(10)
-                .Table(table =>
-                {
-                    table.ColumnsDefinition(cols =>
-                    {
-                        cols.RelativeColumn();
-                        cols.RelativeColumn();
-                        cols.RelativeColumn();
-                    });
-
-                    foreach (var member in troopMembers)
-                    {
-                        photoMap.TryGetValue(member.Id, out var photoBytes);
-                        BuildMemberCell(table, member, photoBytes);
-                    }
-
-                    // Pad the last row with empty cells so the grid stays aligned
-                    var remainder = troopMembers.Count % 3;
-                    if (remainder != 0)
-                        for (int i = 0; i < 3 - remainder; i++)
-                            table.Cell().MinHeight(130);
-                });
-
-            // ── Footer ───────────────────────────────────────────────────────
-            page.Footer()
-                .PaddingTop(4)
-                .Row(row =>
-                {
-                    row.RelativeItem()
-                        .AlignBottom()
-                        .Text(troopName)
-                        .FontSize(7.5f).FontColor(TextHint)
-                        .FontFamily(FontFor(troopName));
-
-                    row.RelativeItem()
-                        .AlignBottom()
-                        .AlignRight()
-                        .Text(txt =>
-                        {
-                            txt.Span("Page ").FontSize(7.5f).FontColor(TextHint);
-                            txt.CurrentPageNumber().FontSize(7.5f).FontColor(TextHint);
-                            txt.Span(" of ").FontSize(7.5f).FontColor(TextHint);
-                            txt.TotalPages().FontSize(7.5f).FontColor(TextHint);
-                        });
-                });
-        });
-    }
-
-    // ── Single member card cell ───────────────────────────────────────────────
-
-    private void BuildMemberCell(TableDescriptor table, Member member, byte[]? photoBytes)
-    {
-        // Generate QR PNG bytes — encodes "SCOUT-XXXXXX"
-        var qrBytes = _qrCode.GenerateQrCodeImage(member.QrCode);
-
-        table.Cell()
-            .Border(0.5f)
-            .BorderColor(BorderColor)
-            .Padding(7)
-            .Column(col =>
-            {
-                col.Spacing(3);
-
-                // ── Profile photo (optional, 50×50 circle-like square) ──────
-                if (photoBytes is { Length: > 0 })
-                {
-                    col.Item()
-                        .AlignCenter()
-                        .Width(50)
-                        .Height(50)
-                        .Image(photoBytes)
-                        .FitArea();
+                    var qrPng = _qrCode.GenerateQrCodeImage(m.QrCode);
+                    var qrImg = XImage.FromStream(() => new MemoryStream(qrPng));
+                    double sz = 90, qx = x + (colW - sz) / 2;
+                    g.DrawImage(qrImg, qx, y + 8, sz, sz);
                 }
+                catch { /* skip on error */ }
 
-                // QR image — 90pt ≈ 3.2 cm, well above the 3 cm minimum
-                col.Item()
-                    .AlignCenter()
-                    .Width(90)
-                    .Image(qrBytes);
+                double ty = y + 104;
+                g.DrawString(m.FullName, fName, new XSolidBrush(ColPrimDark), new XRect(x + 4, ty, colW - 8, 14), XStringFormats.TopCenter);
+                g.DrawString($"#{m.CustomId:D6}", fId, new XSolidBrush(ColPrimary), new XRect(x + 4, ty + 14, colW - 8, 12), XStringFormats.TopCenter);
+                if (!string.IsNullOrWhiteSpace(m.AcademicYear))
+                    g.DrawString(m.AcademicYear, fGrd, new XSolidBrush(ColText2), new XRect(x + 4, ty + 27, colW - 8, 12), XStringFormats.TopCenter);
+            }
 
-                // Member full name — use Arabic font when name contains Arabic chars
-                bool nameIsArabic = IsArabic(member.FullName);
-                col.Item()
-                    .AlignCenter()
-                    .PaddingTop(2)
-                    .Text(member.FullName)
-                    .Bold().FontSize(8.5f).FontColor(TextPrimary)
-                    .FontFamily(nameIsArabic ? ArabicFont : LatinFont);
-
-                // 6-digit scout ID (always Latin digits)
-                col.Item()
-                    .AlignCenter()
-                    .Text($"#{member.CustomId:D6}")
-                    .FontSize(8f).FontColor(Primary);
-
-                // Academic grade (optional) — may also be Arabic
-                if (!string.IsNullOrWhiteSpace(member.AcademicYear))
-                    col.Item()
-                        .AlignCenter()
-                        .Text(member.AcademicYear)
-                        .FontSize(7.5f).FontColor(TextSecond)
-                        .FontFamily(FontFor(member.AcademicYear));
-            });
+            // Footer
+            g.DrawString(troop, new XFont("Arial", 7, XFontStyle.Regular), new XSolidBrush(ColText2), new XRect(Margin, PageH - 20, PageW / 2, 14), XStringFormats.TopLeft);
+        }
     }
 }

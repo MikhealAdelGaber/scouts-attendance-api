@@ -60,6 +60,12 @@ public class ExcelExportService : IExcelExportService
             .Include(m => m.Troop)
             .Where(m => !m.IsDeleted);
 
+        // Scope to the caller's group unless they are a SystemAdmin
+        if (!_currentUser.IsSystemAdmin && _currentUser.GroupId.HasValue)
+            query = query.Where(m => m.GroupId == _currentUser.GroupId.Value);
+        else if (_currentUser.HasTroopScope && _currentUser.TroopId.HasValue)
+            query = query.Where(m => m.TroopId == _currentUser.TroopId.Value);
+
         if (troopId.HasValue) query = query.Where(m => m.TroopId == troopId.Value);
 
         var members = await query.OrderBy(m => m.Troop == null ? "" : m.Troop.Name).ThenBy(m => m.LastName).ToListAsync();
@@ -112,6 +118,12 @@ public class ExcelExportService : IExcelExportService
             .Include(m => m.Troop)
             .Include(m => m.MemberPoints)
             .Where(m => !m.IsDeleted);
+
+        // Scope to the caller's group unless they are a SystemAdmin
+        if (!_currentUser.IsSystemAdmin && _currentUser.GroupId.HasValue)
+            query = query.Where(m => m.GroupId == _currentUser.GroupId.Value);
+        else if (_currentUser.HasTroopScope && _currentUser.TroopId.HasValue)
+            query = query.Where(m => m.TroopId == _currentUser.TroopId.Value);
 
         if (troopId.HasValue) query = query.Where(m => m.TroopId == troopId.Value);
 

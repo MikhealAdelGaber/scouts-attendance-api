@@ -10,9 +10,12 @@ using System.Text;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// Railway injects PORT; bind to it so the container accepts traffic
-var port = Environment.GetEnvironmentVariable("PORT") ?? "8080";
-builder.WebHost.UseUrls($"http://0.0.0.0:{port}");
+// Railway/Docker inject PORT — only bind manually in that case.
+// On IIS (Windows hosting like Monstores) UseUrls must NOT be called;
+// IIS manages the port via the ASPNETCORE_PORT / web.config integration.
+var port = Environment.GetEnvironmentVariable("PORT");
+if (!string.IsNullOrEmpty(port))
+    builder.WebHost.UseUrls($"http://0.0.0.0:{port}");
 
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();

@@ -29,6 +29,24 @@ public sealed class QrPdfExportService : IQrPdfExportService
     private static readonly XColor ColText2    = XColor.FromArgb(0x5a, 0x63, 0x79);
     private static readonly XColor ColBorder   = XColor.FromArgb(0xe0, 0xe0, 0xe0);
 
+    /// <summary>
+    /// Fixes Arabic/RTL text for LTR PDF engines (PdfSharpCore has no bidi support).
+    /// Reverses word order and each word's characters so Arabic reads correctly in PDF.
+    /// Leaves Latin-only strings unchanged.
+    /// </summary>
+    private static string FixRtl(string? text)
+    {
+        if (string.IsNullOrWhiteSpace(text)) return text ?? "";
+        // Check if the string contains Arabic characters
+        if (!text.Any(c => c >= '؀' && c <= 'ۿ')) return text;
+
+        // Split into words, reverse each word's chars, then reverse word order
+        // so the whole string reads RTL when drawn LTR by PdfSharpCore
+        var words = text.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        var fixedWords = words.Select(w => new string(w.Reverse().ToArray()));
+        return string.Join(" ", fixedWords.Reverse());
+    }
+
     public QrPdfExportService(IUnitOfWork uow, ICurrentUserService currentUser, IQrCodeService qrCode)
     {
         _uow = uow; _currentUser = currentUser; _qrCode = qrCode;
@@ -101,7 +119,7 @@ public sealed class QrPdfExportService : IQrPdfExportService
 
             // Header
             g.DrawRectangle(new XSolidBrush(ColPrimDark), 0, 0, PageW, HeaderH);
-            g.DrawString(troop, fHead, new XSolidBrush(XColors.White), new XRect(Margin, 0, PageW - Margin * 2, HeaderH), XStringFormats.CenterLeft);
+            g.DrawString(FixRtl(troop), fHead, new XSolidBrush(XColors.White), new XRect(Margin, 0, PageW - Margin * 2, HeaderH), XStringFormats.CenterLeft);
             g.DrawString($"{list.Count} members", fSub, new XSolidBrush(XColor.FromArgb(0xc5, 0xca, 0xe9)), new XRect(0, 0, PageW - Margin, HeaderH), XStringFormats.CenterRight);
 
             // Cards
@@ -126,10 +144,10 @@ public sealed class QrPdfExportService : IQrPdfExportService
                 catch { /* skip on error */ }
 
                 double ty = y + 104;
-                g.DrawString(m.FullName, fName, new XSolidBrush(ColPrimDark), new XRect(x + 4, ty, colW - 8, 14), XStringFormats.TopCenter);
+                g.DrawString(FixRtl(m.FullName), fName, new XSolidBrush(ColPrimDark), new XRect(x + 4, ty, colW - 8, 14), XStringFormats.TopCenter);
                 g.DrawString($"#{m.CustomId:D6}", fId, new XSolidBrush(ColPrimary), new XRect(x + 4, ty + 14, colW - 8, 12), XStringFormats.TopCenter);
                 if (!string.IsNullOrWhiteSpace(m.AcademicYear))
-                    g.DrawString(m.AcademicYear, fGrd, new XSolidBrush(ColText2), new XRect(x + 4, ty + 27, colW - 8, 12), XStringFormats.TopCenter);
+                    g.DrawString(FixRtl(m.AcademicYear), fGrd, new XSolidBrush(ColText2), new XRect(x + 4, ty + 27, colW - 8, 12), XStringFormats.TopCenter);
             }
 
             // Footer

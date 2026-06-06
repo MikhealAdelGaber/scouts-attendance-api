@@ -38,7 +38,7 @@ public class ExceptionMiddleware
             UnauthorizedAccessException => (StatusCodes.Status403Forbidden, ex.Message),
             InvalidOperationException => (StatusCodes.Status400BadRequest, ex.Message),
             ArgumentException => (StatusCodes.Status400BadRequest, ex.Message),
-            _ => (StatusCodes.Status500InternalServerError, "An unexpected error occurred")
+            _ => (StatusCodes.Status500InternalServerError, $"{ex.GetType().Name}: {ex.Message}")
         };
 
         context.Response.StatusCode = statusCode;

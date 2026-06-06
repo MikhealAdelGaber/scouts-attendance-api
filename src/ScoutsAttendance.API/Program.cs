@@ -95,7 +95,9 @@ builder.Services.AddCors(options =>
                 "https://localhost:4200",
                 "https://MikhealAdelGaber.github.io",
                 "http://mikha.runasp.net",
-                "https://mikha.runasp.net"
+                "https://mikha.runasp.net",
+                "http://mikha-a.runasp.net",
+                "https://mikha-a.runasp.net"
               )
               .AllowAnyMethod()
               .AllowAnyHeader()

@@ -14,39 +14,52 @@ namespace ScoutsAttendance.Infrastructure;
 
 public static class DependencyInjection
 {
+    /// <summary>
+    /// Initialises QuestPDF licence + Arabic font — called from Program.cs inside its own
+    /// try/catch so a missing SkiaSharp native DLL never prevents DI registration.
+    /// </summary>
+    public static string InitialiseQuestPdf()
+    {
+        try
+        {
+            QuestPDF.Settings.License = QuestPDF.Infrastructure.LicenseType.Community;
+
+            var arabicFontCandidates = new[]
+            {
+                "/usr/share/fonts/truetype/noto/NotoNaskhArabic-Regular.ttf",
+                "/usr/share/fonts/truetype/noto/NotoNaskhArabicUI-Regular.ttf",
+                "/usr/share/fonts/opentype/noto/NotoNaskhArabic-Regular.ttf",
+                @"C:\Windows\Fonts\arial.ttf",
+                @"C:\Windows\Fonts\times.ttf",
+            };
+            foreach (var fontPath in arabicFontCandidates)
+            {
+                if (!File.Exists(fontPath)) continue;
+                try
+                {
+                    using var stream = File.OpenRead(fontPath);
+                    FontManager.RegisterFont(stream);
+                    Console.WriteLine($"[QuestPDF] Registered font: {fontPath}");
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"[QuestPDF] Font registration failed for {fontPath}: {ex.Message}");
+                }
+                break;
+            }
+            return string.Empty;
+        }
+        catch (Exception ex)
+        {
+            // SkiaSharp native DLL missing or VC++ runtime not installed — PDF exports
+            // won't work but the rest of the app runs normally.
+            Console.Error.WriteLine($"[QuestPDF] Init failed (PDF exports disabled): {ex.Message}");
+            return ex.ToString();
+        }
+    }
+
     public static IServiceCollection AddInfrastructure(this IServiceCollection services, IConfiguration config)
     {
-        // Set QuestPDF community licence once at startup (Settings is in root QuestPDF namespace)
-        QuestPDF.Settings.License = QuestPDF.Infrastructure.LicenseType.Community;
-
-        // Register Arabic-capable font so names like "ميرا بهاء" render correctly in PDF exports.
-        // fonts-noto-core (installed in Dockerfile) ships NotoNaskhArabic on Linux.
-        // On Windows dev machines the font lives under C:\Windows\Fonts.
-        var arabicFontCandidates = new[]
-        {
-            // Linux (Debian / Railway Docker image)
-            "/usr/share/fonts/truetype/noto/NotoNaskhArabic-Regular.ttf",
-            "/usr/share/fonts/truetype/noto/NotoNaskhArabicUI-Regular.ttf",
-            "/usr/share/fonts/opentype/noto/NotoNaskhArabic-Regular.ttf",
-            // Windows fallback (dev machines)
-            @"C:\Windows\Fonts\arial.ttf",
-            @"C:\Windows\Fonts\times.ttf",
-        };
-        foreach (var fontPath in arabicFontCandidates)
-        {
-            if (!File.Exists(fontPath)) continue;
-            try
-            {
-                using var stream = File.OpenRead(fontPath);
-                FontManager.RegisterFont(stream);
-                Console.WriteLine($"[QuestPDF] Registered Arabic font: {fontPath}");
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"[QuestPDF] Failed to register font {fontPath}: {ex.Message}");
-            }
-            break;
-        }
 
         // Railway sets DATABASE_URL for PostgreSQL add-on; fall back to SQL Server for local dev
         var databaseUrl = Environment.GetEnvironmentVariable("DATABASE_URL");

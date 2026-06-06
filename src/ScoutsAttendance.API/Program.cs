@@ -46,17 +46,12 @@ builder.Services.AddSwaggerGen(c =>
 
 builder.Services.AddHttpContextAccessor();
 
-// Wrap infrastructure registration — if any library fails (e.g. QuestPDF/SkiaSharp
-// native DLL missing) the app still starts and reports the error via /api/startup-error
-try
-{
-    builder.Services.AddInfrastructure(builder.Configuration);
-    builder.Services.AddApplication();
-}
-catch (Exception ex)
-{
-    startupError = $"[DI Registration Error]\n{ex}";
-}
+// QuestPDF / SkiaSharp init — isolated so a missing native DLL never blocks DI registration
+startupError = ScoutsAttendance.Infrastructure.DependencyInjection.InitialiseQuestPdf();
+
+// Register all services — no try/catch here so real DI errors surface immediately
+builder.Services.AddInfrastructure(builder.Configuration);
+builder.Services.AddApplication();
 
 // Allow JWT key override via env var (set JWT_KEY in Railway for production).
 var jwtKey = Environment.GetEnvironmentVariable("JWT_KEY")

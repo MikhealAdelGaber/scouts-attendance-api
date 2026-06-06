@@ -8,6 +8,9 @@ using ScoutsAttendance.API.Middleware;
 using ScoutsAttendance.API.Hubs;
 using System.Text;
 
+// ── Capture any startup exception so the app can still start and report it ──
+var startupError = string.Empty;
+
 var builder = WebApplication.CreateBuilder(args);
 
 // Railway/Docker inject PORT — only bind manually in that case.
@@ -42,15 +45,23 @@ builder.Services.AddSwaggerGen(c =>
 });
 
 builder.Services.AddHttpContextAccessor();
-builder.Services.AddInfrastructure(builder.Configuration);
-builder.Services.AddApplication();
+
+// Wrap infrastructure registration — if any library fails (e.g. QuestPDF/SkiaSharp
+// native DLL missing) the app still starts and reports the error via /api/startup-error
+try
+{
+    builder.Services.AddInfrastructure(builder.Configuration);
+    builder.Services.AddApplication();
+}
+catch (Exception ex)
+{
+    startupError = $"[DI Registration Error]\n{ex}";
+}
 
 // Allow JWT key override via env var (set JWT_KEY in Railway for production).
-// Write the resolved key back into config so JwtService (which reads _config["Jwt:Key"])
-// always uses the same key as the JWT Bearer validation — preventing signature mismatch.
 var jwtKey = Environment.GetEnvironmentVariable("JWT_KEY")
           ?? builder.Configuration["Jwt:Key"]!;
-builder.Configuration["Jwt:Key"] = jwtKey;   // ← sync JwtService with the resolved key
+builder.Configuration["Jwt:Key"] = jwtKey;
 
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer(opt =>
@@ -67,7 +78,6 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
             ClockSkew               = TimeSpan.Zero
         };
 
-        // Allow JWT token via query string for SignalR WebSocket connections
         opt.Events = new JwtBearerEvents
         {
             OnMessageReceived = context =>
@@ -75,9 +85,7 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
                 var accessToken = context.Request.Query["access_token"];
                 if (!string.IsNullOrEmpty(accessToken) &&
                     context.Request.Path.StartsWithSegments("/hubs"))
-                {
                     context.Token = accessToken;
-                }
                 return Task.CompletedTask;
             }
         };
@@ -101,6 +109,24 @@ builder.Services.AddCors(options =>
 
 var app = builder.Build();
 
+// ── Diagnostic endpoint — always available, no auth required ─────────────────
+// Visit http://mikha.runasp.net/api/startup-error to see what crashed
+app.MapGet("/api/startup-error", () =>
+{
+    var info = new
+    {
+        status        = string.IsNullOrEmpty(startupError) ? "OK" : "ERROR",
+        dotnetVersion = Environment.Version.ToString(),
+        os            = Environment.OSVersion.ToString(),
+        machineName   = Environment.MachineName,
+        error         = string.IsNullOrEmpty(startupError) ? null : startupError
+    };
+    return Results.Json(info);
+});
+
+// ── Health check ─────────────────────────────────────────────────────────────
+app.MapGet("/api/health", () => Results.Json(new { status = "healthy", time = DateTime.UtcNow }));
+
 if (app.Environment.IsDevelopment())
 {
     app.UseSwagger();
@@ -109,16 +135,19 @@ if (app.Environment.IsDevelopment())
 
 app.UseMiddleware<ExceptionMiddleware>();
 app.UseCors("AllowAngular");
-app.UseStaticFiles();   // serves wwwroot/uploads/members/* for LocalPhotoService
-// Skip HTTPS redirect on Railway (SSL is terminated at the proxy level)
+
+try { app.UseStaticFiles(); } catch { /* ignore if wwwroot missing */ }
+
 if (app.Environment.IsDevelopment())
     app.UseHttpsRedirection();
+
 app.UseAuthentication();
 app.UseAuthorization();
 app.MapControllers();
-app.MapHub<AttendanceHub>("/hubs/attendance");
 
-// Seed the database — wrapped so a transient DB failure never crashes the app
+try { app.MapHub<AttendanceHub>("/hubs/attendance"); } catch { /* SignalR optional */ }
+
+// ── Seed the database ─────────────────────────────────────────────────────────
 try
 {
     using var scope = app.Services.CreateScope();
@@ -127,8 +156,8 @@ try
 }
 catch (Exception ex)
 {
-    var logger = app.Services.GetRequiredService<ILogger<Program>>();
-    logger.LogError(ex, "DB seeder failed — app will still start. Check DB connection.");
+    startupError += $"\n[DB Seeder Error]\n{ex}";
+    Console.Error.WriteLine($"DB seeder failed: {ex.Message}");
 }
 
 app.Run();

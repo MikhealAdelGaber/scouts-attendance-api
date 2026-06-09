@@ -137,6 +137,10 @@ app.MapControllers();
 
 try { app.MapHub<AttendanceHub>("/hubs/attendance"); } catch { /* SignalR optional */ }
 
+// SPA fallback: for any non-API, non-static-file request return index.html
+// so Angular client-side routing works on direct URL navigation.
+app.MapFallbackToFile("index.html");
+
 // ── Seed the database ─────────────────────────────────────────────────────────
 try
 {

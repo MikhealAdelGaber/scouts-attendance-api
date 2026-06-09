@@ -137,6 +137,19 @@ app.MapControllers();
 
 try { app.MapHub<AttendanceHub>("/hubs/attendance"); } catch { /* SignalR optional */ }
 
+// ── Apply pending EF Core migrations ──────────────────────────────────────────
+try
+{
+    using var scope = app.Services.CreateScope();
+    var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+    await db.Database.MigrateAsync();
+}
+catch (Exception ex)
+{
+    startupError += $"\n[Migration Error]\n{ex}";
+    Console.Error.WriteLine($"Migration failed: {ex.Message}");
+}
+
 // ── Seed the database ─────────────────────────────────────────────────────────
 try
 {

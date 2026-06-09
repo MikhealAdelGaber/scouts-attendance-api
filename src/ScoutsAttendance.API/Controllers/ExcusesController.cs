@@ -8,7 +8,7 @@ namespace ScoutsAttendance.API.Controllers;
 
 [ApiController]
 [Route("api/[controller]")]
-[Authorize(Roles = "SystemAdmin,GroupLeader,AttendanceOnly")]
+[Authorize(Roles = "SystemAdmin,GroupLeader,AttendanceOnly,GroupLeaderAdmin")]
 public class ExcusesController : ControllerBase
 {
     private readonly IExcuseService _service;
@@ -64,7 +64,7 @@ public class ExcusesController : ControllerBase
 
     /// <summary>Revoke an excuse — restricted to GroupLeader and SystemAdmin only.</summary>
     [HttpDelete("{id:guid}/revoke")]
-    [Authorize(Roles = "SystemAdmin,GroupLeader")]
+    [Authorize(Roles = "SystemAdmin,GroupLeader,GroupLeaderAdmin")]
     public async Task<ActionResult<ApiResponse>> Revoke(Guid id)
     {
         var ok = await _service.RevokeAsync(id);

@@ -27,8 +27,9 @@ namespace ScoutsAttendance.Infrastructure.Migrations
                 defaultValue: 0m);
 
             // 2. Data migration: move existing Score into TheoreticalScore; PracticalScore stays 0
+            // Works on both SQL Server (bit: 0/1) and PostgreSQL (boolean: false/true)
             migrationBuilder.Sql(
-                "UPDATE MemberExamScores SET TheoreticalScore = Score WHERE IsDeleted = 0");
+                "UPDATE \"MemberExamScores\" SET \"TheoreticalScore\" = \"Score\"");
 
             // 3. Drop the old Score column
             migrationBuilder.DropColumn(

@@ -12,7 +12,7 @@ namespace ScoutsAttendance.API.Controllers;
 /// </summary>
 [ApiController]
 [Route("api/[controller]")]
-[Authorize(Roles = "SystemAdmin,GroupLeader,AttendanceOnly")]
+[Authorize(Roles = "SystemAdmin,GroupLeader,AttendanceOnly,GroupLeaderAdmin")]
 public class PendingExcusesController : ControllerBase
 {
     private readonly IPendingExcuseService _service;

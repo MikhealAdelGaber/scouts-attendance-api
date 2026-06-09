@@ -12,7 +12,7 @@ namespace ScoutsAttendance.API.Controllers;
 
 [ApiController]
 [Route("api/[controller]")]
-[Authorize(Roles = "SystemAdmin,GroupLeader,AttendanceOnly")]
+[Authorize(Roles = "SystemAdmin,GroupLeader,AttendanceOnly,GroupLeaderAdmin")]
 public class MembersController : ControllerBase
 {
     private readonly IMemberService       _service;
@@ -114,7 +114,7 @@ public class MembersController : ControllerBase
     }
 
     [HttpPost]
-    [Authorize(Roles = "SystemAdmin,GroupLeader")]
+    [Authorize(Roles = "SystemAdmin,GroupLeader,GroupLeaderAdmin")]
     public async Task<ActionResult<ApiResponse<MemberDto>>> Create([FromBody] CreateMemberDto dto)
     {
         var result = await _service.CreateAsync(dto);
@@ -122,7 +122,7 @@ public class MembersController : ControllerBase
     }
 
     [HttpPut("{id:guid}")]
-    [Authorize(Roles = "SystemAdmin,GroupLeader")]
+    [Authorize(Roles = "SystemAdmin,GroupLeader,GroupLeaderAdmin")]
     public async Task<ActionResult<ApiResponse<MemberDto>>> Update(Guid id, [FromBody] UpdateMemberDto dto)
     {
         var result = await _service.UpdateAsync(id, dto);
@@ -130,7 +130,7 @@ public class MembersController : ControllerBase
     }
 
     [HttpDelete("{id:guid}")]
-    [Authorize(Roles = "SystemAdmin,GroupLeader")]
+    [Authorize(Roles = "SystemAdmin,GroupLeader,GroupLeaderAdmin")]
     public async Task<ActionResult<ApiResponse>> Delete(Guid id)
     {
         var ok = await _service.DeleteAsync(id);
@@ -152,7 +152,7 @@ public class MembersController : ControllerBase
     }
 
     [HttpPost("transfer")]
-    [Authorize(Roles = "SystemAdmin,GroupLeader")]
+    [Authorize(Roles = "SystemAdmin,GroupLeader,GroupLeaderAdmin")]
     public async Task<ActionResult<ApiResponse<TransferDto>>> Transfer([FromBody] CreateTransferDto dto)
     {
         var result = await _transfer.CreateTransferAsync(dto);
@@ -163,7 +163,7 @@ public class MembersController : ControllerBase
 
     /// <summary>Moves a batch of members to a new troop in one transaction.</summary>
     [HttpPost("bulk-transfer-troop")]
-    [Authorize(Roles = "SystemAdmin,GroupLeader")]
+    [Authorize(Roles = "SystemAdmin,GroupLeader,GroupLeaderAdmin")]
     public async Task<ActionResult<ApiResponse<BulkTransferResultDto>>> BulkTransferTroop(
         [FromBody] BulkTransferTroopDto dto)
     {
@@ -181,7 +181,7 @@ public class MembersController : ControllerBase
 
     /// <summary>Promotes every member to the next academic grade in one transaction.</summary>
     [HttpPost("auto-promote-grades")]
-    [Authorize(Roles = "SystemAdmin,GroupLeader")]
+    [Authorize(Roles = "SystemAdmin,GroupLeader,GroupLeaderAdmin")]
     public async Task<ActionResult<ApiResponse<AutoPromoteGradesResultDto>>> AutoPromoteGrades(
         [FromBody] AutoPromoteGradesDto dto)
     {
@@ -194,7 +194,7 @@ public class MembersController : ControllerBase
 
     /// <summary>Returns count of members per academic grade, in canonical order.</summary>
     [HttpGet("grade-distribution")]
-    [Authorize(Roles = "SystemAdmin,GroupLeader")]
+    [Authorize(Roles = "SystemAdmin,GroupLeader,GroupLeaderAdmin")]
     public async Task<ActionResult<ApiResponse<IEnumerable<GradeCountDto>>>> GetGradeDistribution()
     {
         var result = await _service.GetGradeDistributionAsync();
@@ -203,7 +203,7 @@ public class MembersController : ControllerBase
 
     /// <summary>Bulk update talaea / academic year / grade for all members in a troop at year start.</summary>
     [HttpPost("bulk-year-update")]
-    [Authorize(Roles = "SystemAdmin,GroupLeader")]
+    [Authorize(Roles = "SystemAdmin,GroupLeader,GroupLeaderAdmin")]
     public async Task<ActionResult<ApiResponse<int>>> BulkYearUpdate([FromBody] BulkYearUpdateDto dto)
     {
         var count = await _service.BulkYearUpdateAsync(dto);
@@ -212,7 +212,7 @@ public class MembersController : ControllerBase
 
     /// <summary>Downloads a pre-formatted .xlsx template for bulk member import.</summary>
     [HttpGet("import-template")]
-    [Authorize(Roles = "SystemAdmin,GroupLeader")]
+    [Authorize(Roles = "SystemAdmin,GroupLeader,GroupLeaderAdmin")]
     public IActionResult DownloadImportTemplate()
     {
         var bytes = _import.GenerateTemplate();
@@ -228,7 +228,7 @@ public class MembersController : ControllerBase
     ///   GroupLeader  → own group's members
     /// </summary>
     [HttpGet("export-qr-pdf")]
-    [Authorize(Roles = "SystemAdmin,GroupLeader")]
+    [Authorize(Roles = "SystemAdmin,GroupLeader,GroupLeaderAdmin")]
     public async Task<IActionResult> ExportQrCodesPdf()
     {
         var (bytes, filename) = await _qrPdf.ExportAsync();
@@ -240,7 +240,7 @@ public class MembersController : ControllerBase
     /// Pass troopId if the current user is not automatically scoped to a troop.
     /// </summary>
     [HttpPost("import")]
-    [Authorize(Roles = "SystemAdmin,GroupLeader")]
+    [Authorize(Roles = "SystemAdmin,GroupLeader,GroupLeaderAdmin")]
     public async Task<ActionResult<ApiResponse<ImportMembersResultDto>>> ImportMembers(
         IFormFile file,
         [FromQuery] Guid? troopId = null)
@@ -308,7 +308,7 @@ public class MembersController : ControllerBase
     /// Returns the public image URL stored on the member record.
     /// </summary>
     [HttpPost("{id:guid}/upload-photo")]
-    [Authorize(Roles = "SystemAdmin,GroupLeader")]
+    [Authorize(Roles = "SystemAdmin,GroupLeader,GroupLeaderAdmin")]
     public async Task<ActionResult<ApiResponse<object>>> UploadPhoto(Guid id, IFormFile photo)
     {
         if (photo is null || photo.Length == 0)
@@ -355,7 +355,7 @@ public class MembersController : ControllerBase
 
     /// <summary>Removes the profile photo for a member.</summary>
     [HttpDelete("{id:guid}/photo")]
-    [Authorize(Roles = "SystemAdmin,GroupLeader")]
+    [Authorize(Roles = "SystemAdmin,GroupLeader,GroupLeaderAdmin")]
     public async Task<ActionResult<ApiResponse>> DeletePhoto(Guid id)
     {
         var member = await _uow.Members.GetByIdAsync(id);

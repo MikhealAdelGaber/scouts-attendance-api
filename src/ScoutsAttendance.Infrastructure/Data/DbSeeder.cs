@@ -827,6 +827,62 @@ public static class DbSeeder
             try { await context.Database.ExecuteSqlRawAsync(@"CREATE UNIQUE INDEX IF NOT EXISTS ""IX_ProjectScores_ProjectMember"" ON ""MemberProjectScores"" (""ProjectId"", ""MemberId"") WHERE ""IsDeleted"" = false"); } catch { }
             try { await context.Database.ExecuteSqlRawAsync(@"CREATE INDEX IF NOT EXISTS ""IX_ProjectScores_MemberId"" ON ""MemberProjectScores"" (""MemberId"")"); } catch { }
 
+            // ── MemberExamScores: split Score → TheoreticalScore + PracticalScore ────────
+            try
+            {
+                await context.Database.ExecuteSqlRawAsync(
+                    @"ALTER TABLE ""MemberExamScores"" ADD COLUMN IF NOT EXISTS ""TheoreticalScore"" DECIMAL(8,2) NOT NULL DEFAULT 0");
+            }
+            catch { /* safe */ }
+            try
+            {
+                await context.Database.ExecuteSqlRawAsync(
+                    @"ALTER TABLE ""MemberExamScores"" ADD COLUMN IF NOT EXISTS ""PracticalScore"" DECIMAL(8,2) NOT NULL DEFAULT 0");
+            }
+            catch { /* safe */ }
+            // Data migration: copy old Score → TheoreticalScore, then drop Score (idempotent via DO block)
+            try
+            {
+                await context.Database.ExecuteSqlRawAsync(@"
+                    DO $$ BEGIN
+                      IF EXISTS (
+                          SELECT 1 FROM information_schema.columns
+                          WHERE  table_name = 'MemberExamScores' AND column_name = 'Score'
+                      ) THEN
+                          UPDATE ""MemberExamScores"" SET ""TheoreticalScore"" = ""Score"";
+                          ALTER  TABLE ""MemberExamScores"" DROP COLUMN ""Score"";
+                      END IF;
+                    END $$");
+            }
+            catch { /* safe */ }
+
+            // ── ExamScoreConfigs table ────────────────────────────────────────────────────
+            try
+            {
+                await context.Database.ExecuteSqlRawAsync(@"
+                    CREATE TABLE IF NOT EXISTS ""ExamScoreConfigs"" (
+                        ""Id""                  UUID         NOT NULL,
+                        ""GroupId""             UUID         NOT NULL,
+                        ""Year""                INTEGER      NOT NULL,
+                        ""TheoreticalMaxScore"" DECIMAL(8,2) NOT NULL DEFAULT 50,
+                        ""PracticalMaxScore""   DECIMAL(8,2) NOT NULL DEFAULT 50,
+                        ""CreatedBy""           VARCHAR(200) NOT NULL DEFAULT '',
+                        ""CreatedAt""           TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+                        ""UpdatedAt""           TIMESTAMPTZ,
+                        ""IsDeleted""           BOOLEAN      NOT NULL DEFAULT FALSE,
+                        CONSTRAINT ""PK_ExamScoreConfigs"" PRIMARY KEY (""Id""),
+                        CONSTRAINT ""FK_ExamScoreConfigs_Groups_GroupId""
+                            FOREIGN KEY (""GroupId"") REFERENCES ""Groups""(""Id"") ON DELETE CASCADE
+                    )");
+            }
+            catch { /* safe — IF NOT EXISTS handles idempotency */ }
+            try
+            {
+                await context.Database.ExecuteSqlRawAsync(
+                    @"CREATE UNIQUE INDEX IF NOT EXISTS ""IX_ExamScoreConfigs_GroupId_Year"" ON ""ExamScoreConfigs"" (""GroupId"", ""Year"") WHERE ""IsDeleted"" = FALSE");
+            }
+            catch { /* safe */ }
+
             // ── Retroactive cleanup: remove orphaned points/attendance for deleted events ──
             // Events soft-deleted before the fix (EventService.DeleteAsync now removes them)
             // left MemberPoints and AttendanceRecords behind.

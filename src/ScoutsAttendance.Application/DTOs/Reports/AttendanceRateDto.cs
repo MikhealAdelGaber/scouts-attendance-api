@@ -24,8 +24,12 @@ public class AttendanceRateDto
         : Math.Round((Present + Late + TooLate + Excused) * 100.0 / TotalEvents, 1);
 
     // ── Exam score ────────────────────────────────────────────────────────────
-    /// <summary>Latest exam score (0–100) or null if none recorded.</summary>
-    public decimal? LatestExamScore { get; set; }
+    public decimal? LatestExamScore            { get; set; }   // raw total (kept for compat)
+    public decimal? LatestExamTheoretical      { get; set; }   // e.g. 45
+    public decimal? LatestExamTheoreticalMax   { get; set; }   // e.g. 50
+    public decimal? LatestExamPractical        { get; set; }   // e.g. 40
+    public decimal? LatestExamPracticalMax     { get; set; }   // e.g. 50
+    public decimal? LatestExamPercentage       { get; set; }   // 0–100
 
     // ── Projects ──────────────────────────────────────────────────────────────
     public int      TotalProjects     { get; set; }

@@ -230,13 +230,48 @@ public class ExcelExportService : IExcelExportService
             .GroupBy(a => a.EventId)
             .ToDictionary(g => g.Key, g => g.ToDictionary(a => a.MemberId, a => a.Status));
 
-        // ── 5. Load latest exam score per member (in memory to avoid LINQ translation) ──
+        // ── 5. Load latest exam score per member + config for max scores ──────────
         var allExamScores = await _uow.MemberExamScores.Query()
             .Where(e => memberIds.Contains(e.MemberId))
             .ToListAsync();
-        var examMap = allExamScores
+
+        var latestExamByMember = allExamScores
             .GroupBy(e => e.MemberId)
-            .ToDictionary(g => g.Key, g => (decimal?)g.OrderByDescending(e => e.Year).First().TotalScore);
+            .ToDictionary(g => g.Key, g => g.OrderByDescending(e => e.Year).First());
+
+        // Load configs for each year that appears in the exam records
+        var examYears = allExamScores.Select(e => e.Year).Distinct().ToList();
+        var examConfigs = examYears.Count > 0
+            ? await _uow.ExamScoreConfigs.Query()
+                .Where(c => groupIds.Contains(c.GroupId) && examYears.Contains(c.Year) && !c.IsDeleted)
+                .ToListAsync()
+            : new List<Domain.Entities.ExamScoreConfig>();
+        // key: (groupId, year)
+        var examConfigMap = examConfigs.ToDictionary(c => (c.GroupId, c.Year));
+
+        // Build per-member exam info record
+        var examMap = latestExamByMember.ToDictionary(
+            kv => kv.Key,
+            kv => {
+                var e = kv.Value;
+                // find config for this member's group + year
+                Domain.Entities.ExamScoreConfig? cfg = null;
+                var member = members.FirstOrDefault(m => m.Id == kv.Key);
+                if (member != null) examConfigMap.TryGetValue((member.GroupId, e.Year), out cfg);
+                decimal maxTheory   = cfg?.TheoreticalMaxScore ?? 0m;
+                decimal maxPractical = cfg?.PracticalMaxScore  ?? 0m;
+                decimal totalMax    = maxTheory + maxPractical;
+                decimal? pct = totalMax > 0
+                    ? Math.Round(e.TotalScore / totalMax * 100m, 1) : (decimal?)null;
+                return (
+                    TotalScore:   (decimal?)e.TotalScore,
+                    Theoretical:  (decimal?)e.TheoreticalScore,
+                    TheoMax:      maxTheory > 0 ? (decimal?)maxTheory   : null,
+                    Practical:    (decimal?)e.PracticalScore,
+                    PracMax:      maxPractical > 0 ? (decimal?)maxPractical : null,
+                    Percentage:   pct
+                );
+            });
 
         // ── 6. Load projects per group ──────────────────────────────────────────
         var projects = await _uow.Projects.Query()
@@ -309,7 +344,12 @@ public class ExcelExportService : IExcelExportService
                 TooLate           = tooLate,
                 Excused           = excused,
                 Absent            = absent,
-                LatestExamScore   = examMap.GetValueOrDefault(m.Id),
+                LatestExamScore          = examMap.TryGetValue(m.Id, out var ex) ? ex.TotalScore    : null,
+                LatestExamTheoretical    = ex.Theoretical,
+                LatestExamTheoreticalMax = ex.TheoMax,
+                LatestExamPractical      = ex.Practical,
+                LatestExamPracticalMax   = ex.PracMax,
+                LatestExamPercentage     = ex.Percentage,
                 TotalProjects     = projectsPerGroup.GetValueOrDefault(m.GroupId),
                 ProjectsCompleted = projectScoreMap.GetValueOrDefault(m.Id),
                 TotalPoints       = pointsMap.GetValueOrDefault(m.Id)
@@ -328,21 +368,21 @@ public class ExcelExportService : IExcelExportService
         // ── Sheet: Full Report ────────────────────────────────────────────────
         var wsSummary = wb.Worksheets.Add("Attendance Report");
         AddLogoRow(wsSummary, "Attendance Rate Report — Scouts Attendance System");
-        wsSummary.Range(1, 1, 1, 15).Merge();
+        wsSummary.Range(1, 1, 1, 17).Merge();
 
         // Date range subtitle
         var rangeLabel = $"Period: {(from.HasValue ? from.Value.ToString("yyyy-MM-dd") : "All")} → {(to.HasValue ? to.Value.ToString("yyyy-MM-dd") : "All")}";
         wsSummary.Cell(2, 1).Value = rangeLabel;
         wsSummary.Cell(2, 1).Style.Font.Italic = true;
         wsSummary.Cell(2, 1).Style.Font.FontColor = XLColor.FromHtml("#555555");
-        wsSummary.Range(2, 1, 2, 15).Merge();
+        wsSummary.Range(2, 1, 2, 17).Merge();
 
-        const int sumCols = 15;
+        const int sumCols = 17;
         var sumHeaders = new[]
         {
             "Rank", "Member", "Troop", "Grade", "Foulard",
             "Total Events", "Present", "Late", "Too Late", "Excused", "Absent",
-            "Attendance %", "Exam Score", "Projects %", "Total Points"
+            "Attendance %", "Theory", "Practical", "Exam %", "Projects %", "Total Points"
         };
         var shRow = wsSummary.Row(4);
         for (int i = 0; i < sumHeaders.Length; i++) shRow.Cell(i + 1).Value = sumHeaders[i];
@@ -384,40 +424,65 @@ public class ExcelExportService : IExcelExportService
             };
             wsSummary.Cell(sRow, 12).Style.Font.Bold = true;
 
-            // Exam Score
-            if (r.LatestExamScore.HasValue)
+            // Theory (col 13)  e.g.  45 / 50
+            if (r.LatestExamTheoretical.HasValue)
             {
-                wsSummary.Cell(sRow, 13).Value = (double)r.LatestExamScore.Value;
-                wsSummary.Cell(sRow, 13).Style.Fill.BackgroundColor = r.LatestExamScore.Value switch
-                {
-                    >= 80 => XLColor.FromHtml("#c8e6c9"),
-                    >= 60 => XLColor.FromHtml("#fff9c4"),
-                    _     => XLColor.FromHtml("#ffcdd2")
-                };
+                var theoLabel = r.LatestExamTheoreticalMax.HasValue
+                    ? $"{r.LatestExamTheoretical.Value} / {r.LatestExamTheoreticalMax.Value}"
+                    : r.LatestExamTheoretical.Value.ToString("0.##");
+                wsSummary.Cell(sRow, 13).Value = theoLabel;
+                wsSummary.Cell(sRow, 13).Style.Fill.BackgroundColor = XLColor.FromHtml("#e3f2fd");
             }
             else { wsSummary.Cell(sRow, 13).Value = "—"; }
 
-            // Projects %
+            // Practical (col 14)  e.g.  40 / 50
+            if (r.LatestExamPractical.HasValue)
+            {
+                var pracLabel = r.LatestExamPracticalMax.HasValue
+                    ? $"{r.LatestExamPractical.Value} / {r.LatestExamPracticalMax.Value}"
+                    : r.LatestExamPractical.Value.ToString("0.##");
+                wsSummary.Cell(sRow, 14).Value = pracLabel;
+                wsSummary.Cell(sRow, 14).Style.Fill.BackgroundColor = XLColor.FromHtml("#f3e5f5");
+            }
+            else { wsSummary.Cell(sRow, 14).Value = "—"; }
+
+            // Exam % (col 15)
+            if (r.LatestExamPercentage.HasValue)
+            {
+                wsSummary.Cell(sRow, 15).Value = (double)r.LatestExamPercentage.Value / 100.0;
+                wsSummary.Cell(sRow, 15).Style.NumberFormat.Format = "0.0%";
+                wsSummary.Cell(sRow, 15).Style.Font.Bold = true;
+                wsSummary.Cell(sRow, 15).Style.Fill.BackgroundColor = r.LatestExamPercentage.Value switch
+                {
+                    >= 90 => XLColor.FromHtml("#c8e6c9"),
+                    >= 75 => XLColor.FromHtml("#fff9c4"),
+                    >= 50 => XLColor.FromHtml("#ffe0b2"),
+                    _     => XLColor.FromHtml("#ffcdd2")
+                };
+            }
+            else { wsSummary.Cell(sRow, 15).Value = "—"; }
+
+            // Projects % (col 16)
             if (r.ProjectRate.HasValue)
             {
-                wsSummary.Cell(sRow, 14).Value = r.ProjectRate.Value / 100.0;
-                wsSummary.Cell(sRow, 14).Style.NumberFormat.Format = "0.0%";
-                wsSummary.Cell(sRow, 14).Style.Fill.BackgroundColor = r.ProjectRate.Value switch
+                wsSummary.Cell(sRow, 16).Value = r.ProjectRate.Value / 100.0;
+                wsSummary.Cell(sRow, 16).Style.NumberFormat.Format = "0.0%";
+                wsSummary.Cell(sRow, 16).Style.Fill.BackgroundColor = r.ProjectRate.Value switch
                 {
                     >= 80 => XLColor.FromHtml("#c8e6c9"),
                     >= 60 => XLColor.FromHtml("#fff9c4"),
                     _     => XLColor.FromHtml("#ffcdd2")
                 };
             }
-            else { wsSummary.Cell(sRow, 14).Value = "—"; }
+            else { wsSummary.Cell(sRow, 16).Value = "—"; }
 
-            // Total Points
-            wsSummary.Cell(sRow, 15).Value = (double)r.TotalPoints;
-            wsSummary.Cell(sRow, 15).Style.NumberFormat.Format = "#,##0.##";
-            wsSummary.Cell(sRow, 15).Style.Font.Bold = true;
+            // Total Points (col 17)
+            wsSummary.Cell(sRow, 17).Value = (double)r.TotalPoints;
+            wsSummary.Cell(sRow, 17).Style.NumberFormat.Format = "#,##0.##";
+            wsSummary.Cell(sRow, 17).Style.Font.Bold = true;
 
             // Row background for non-colour cells
-            foreach (int c in new[] { 1, 2, 3, 4, 6, 7, 8, 9, 10, 11, 15 })
+            foreach (int c in new[] { 1, 2, 3, 4, 6, 7, 8, 9, 10, 11, 17 })
                 wsSummary.Cell(sRow, c).Style.Fill.BackgroundColor = rowBg;
 
             sRow++;
@@ -429,30 +494,34 @@ public class ExcelExportService : IExcelExportService
         wsSummary.Cell(footRow, 1).Style.Font.Bold = true;
         if (rates.Any())
         {
-            wsSummary.Cell(footRow, 11).Value = rates.Average(r => r.Rate) / 100.0;
-            wsSummary.Cell(footRow, 11).Style.NumberFormat.Format = "0.0%";
-            wsSummary.Cell(footRow, 11).Style.Font.Bold = true;
-            var withExam = rates.Where(r => r.LatestExamScore.HasValue).ToList();
-            if (withExam.Any())
+            // Avg Attendance % (col 12)
+            wsSummary.Cell(footRow, 12).Value = rates.Average(r => r.Rate) / 100.0;
+            wsSummary.Cell(footRow, 12).Style.NumberFormat.Format = "0.0%";
+            wsSummary.Cell(footRow, 12).Style.Font.Bold = true;
+            // Avg Exam % (col 15)
+            var withExamPct = rates.Where(r => r.LatestExamPercentage.HasValue).ToList();
+            if (withExamPct.Any())
             {
-                wsSummary.Cell(footRow, 12).Value = (double)withExam.Average(r => r.LatestExamScore!.Value);
-                wsSummary.Cell(footRow, 12).Style.NumberFormat.Format = "0.#";
-                wsSummary.Cell(footRow, 12).Style.Font.Bold = true;
+                wsSummary.Cell(footRow, 15).Value = (double)withExamPct.Average(r => r.LatestExamPercentage!.Value) / 100.0;
+                wsSummary.Cell(footRow, 15).Style.NumberFormat.Format = "0.0%";
+                wsSummary.Cell(footRow, 15).Style.Font.Bold = true;
             }
+            // Avg Projects % (col 16)
             var withProj = rates.Where(r => r.ProjectRate.HasValue).ToList();
             if (withProj.Any())
             {
-                wsSummary.Cell(footRow, 13).Value = withProj.Average(r => r.ProjectRate!.Value) / 100.0;
-                wsSummary.Cell(footRow, 13).Style.NumberFormat.Format = "0.0%";
-                wsSummary.Cell(footRow, 13).Style.Font.Bold = true;
+                wsSummary.Cell(footRow, 16).Value = withProj.Average(r => r.ProjectRate!.Value) / 100.0;
+                wsSummary.Cell(footRow, 16).Style.NumberFormat.Format = "0.0%";
+                wsSummary.Cell(footRow, 16).Style.Font.Bold = true;
             }
-            wsSummary.Cell(footRow, 14).Value = (double)rates.Sum(r => r.TotalPoints);
-            wsSummary.Cell(footRow, 14).Style.NumberFormat.Format = "#,##0.##";
-            wsSummary.Cell(footRow, 14).Style.Font.Bold = true;
+            // Total Points sum (col 17)
+            wsSummary.Cell(footRow, 17).Value = (double)rates.Sum(r => r.TotalPoints);
+            wsSummary.Cell(footRow, 17).Style.NumberFormat.Format = "#,##0.##";
+            wsSummary.Cell(footRow, 17).Style.Font.Bold = true;
         }
         wsSummary.Range(footRow, 1, footRow, sumHeaders.Length).Style.Fill.BackgroundColor = XLColor.FromHtml("#e8eaf6");
 
-        int[] colWidths = { 5, 26, 16, 12, 12, 9, 8, 10, 9, 9, 14, 12, 12, 13 };
+        int[] colWidths = { 5, 26, 16, 12, 10, 9, 8, 8, 9, 9, 9, 13, 13, 13, 12, 13, 13 };
         for (int i = 0; i < colWidths.Length; i++) wsSummary.Column(i + 1).Width = colWidths[i];
         wsSummary.SheetView.FreezeRows(4);
 

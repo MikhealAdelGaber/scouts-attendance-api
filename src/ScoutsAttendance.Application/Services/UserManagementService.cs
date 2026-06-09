@@ -169,7 +169,9 @@ public class UserManagementService : IUserManagementService
     {
         var users = await _uow.Users.Query()
             .Where(u => !u.IsDeleted && u.IsActive
-                     && (u.Role == UserRole.GroupLeader || u.Role == UserRole.SystemAdmin))
+                     && (u.Role == UserRole.GroupLeader
+                      || u.Role == UserRole.GroupLeaderAdmin
+                      || u.Role == UserRole.SystemAdmin))
             .OrderBy(u => u.Username)
             .ToListAsync();
 

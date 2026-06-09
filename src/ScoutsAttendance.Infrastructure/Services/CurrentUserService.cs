@@ -56,18 +56,17 @@ public class CurrentUserService : ICurrentUserService
         }
     }
 
-    public bool IsSystemAdmin    => Role == UserRole.SystemAdmin;
-    public bool IsGroupLeader    => Role == UserRole.GroupLeader;
-    public bool IsAttendanceOnly => Role == UserRole.AttendanceOnly;
+    public bool IsSystemAdmin      => Role == UserRole.SystemAdmin;
+    public bool IsGroupLeader      => Role == UserRole.GroupLeader;
+    public bool IsGroupLeaderAdmin => Role == UserRole.GroupLeaderAdmin;
+    public bool IsAttendanceOnly   => Role == UserRole.AttendanceOnly;
 
     /// <summary>
     /// True when data queries should be automatically scoped to a single troop.
-    /// This applies only to AttendanceOnly users (or any non-admin, non-GroupLeader
-    /// user with a TroopId).  GroupLeaders always have group-wide access regardless
-    /// of whether they also have a TroopId set — restricting them to a single troop
-    /// would hide newly-created troops and members in the same group.
+    /// GroupLeader and GroupLeaderAdmin always have group-wide access; troop-scope
+    /// is only applied to AttendanceOnly users with a TroopId.
     /// </summary>
-    public bool HasTroopScope => !IsSystemAdmin && !IsGroupLeader && TroopId.HasValue;
+    public bool HasTroopScope => !IsSystemAdmin && !IsGroupLeader && !IsGroupLeaderAdmin && TroopId.HasValue;
 
     public bool CanTakeAttendance => ReadBoolClaim("canTakeAttendance")
                                    || IsSystemAdmin || IsAttendanceOnly;
@@ -78,9 +77,9 @@ public class CurrentUserService : ICurrentUserService
     public bool CanAccessTrips    => ReadBoolClaim("canAccessTrips")
                                    || IsSystemAdmin;
     public bool CanAccessBadges   => ReadBoolClaim("canAccessBadges")
-                                   || IsSystemAdmin || IsGroupLeader;
+                                   || IsSystemAdmin || IsGroupLeader || IsGroupLeaderAdmin;
     public bool CanAccessProjects => ReadBoolClaim("canAccessProjects")
-                                   || IsSystemAdmin || IsGroupLeader;
+                                   || IsSystemAdmin || IsGroupLeader || IsGroupLeaderAdmin;
 
     private bool ReadBoolClaim(string name)
     {

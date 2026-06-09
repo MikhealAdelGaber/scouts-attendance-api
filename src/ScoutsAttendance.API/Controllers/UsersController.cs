@@ -2,7 +2,9 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using ScoutsAttendance.Application.Common;
 using ScoutsAttendance.Application.DTOs.Users;
+using ScoutsAttendance.Application.Interfaces;
 using ScoutsAttendance.Application.Services;
+using ScoutsAttendance.Domain.Enums;
 
 namespace ScoutsAttendance.API.Controllers;
 
@@ -12,8 +14,13 @@ namespace ScoutsAttendance.API.Controllers;
 public class UsersController : ControllerBase
 {
     private readonly IUserManagementService _service;
+    private readonly IGroupUserManagementService _groupUserService;
 
-    public UsersController(IUserManagementService service) => _service = service;
+    public UsersController(IUserManagementService service, IGroupUserManagementService groupUserService)
+    {
+        _service          = service;
+        _groupUserService = groupUserService;
+    }
 
     private Guid CurrentUserId => Guid.Parse(
         User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)!.Value);
@@ -108,5 +115,49 @@ public class UsersController : ControllerBase
     {
         var result = await _service.GetAvailableLeadersAsync();
         return Ok(ApiResponse<IEnumerable<UserLeaderDto>>.Ok(result));
+    }
+
+    // ─── GroupLeaderAdmin endpoints (NEW — do not modify above) ──────────────
+
+    /// <summary>
+    /// Returns users in the same group as the caller.
+    /// GroupLeaderAdmin: scoped to their own group only.
+    /// SystemAdmin: sees all users.
+    /// </summary>
+    [HttpGet("group-users")]
+    [Authorize(Roles = "GroupLeaderAdmin,SystemAdmin")]
+    public async Task<ActionResult<ApiResponse<IEnumerable<GroupUserDto>>>> GetGroupUsers()
+    {
+        var result = await _groupUserService.GetGroupUsersAsync();
+        return Ok(ApiResponse<IEnumerable<GroupUserDto>>.Ok(result));
+    }
+
+    /// <summary>
+    /// GroupLeaderAdmin updates role + permissions of a user in their own group.
+    /// Cannot assign SystemAdmin or GroupLeaderAdmin roles.
+    /// Cannot edit own role.
+    /// Returns 403 if the target is outside the caller's group.
+    /// </summary>
+    [HttpPut("{id:guid}/update-role-permissions")]
+    [Authorize(Roles = "GroupLeaderAdmin,SystemAdmin")]
+    public async Task<ActionResult<ApiResponse<GroupUserDto>>> UpdateRolePermissions(
+        Guid id,
+        [FromBody] UpdateRolePermissionsDto dto)
+    {
+        try
+        {
+            var result = await _groupUserService.UpdateRolePermissionsAsync(id, dto, CurrentUserId);
+            return result is null
+                ? NotFound(ApiResponse<GroupUserDto>.Fail("User not found"))
+                : Ok(ApiResponse<GroupUserDto>.Ok(result, "User updated successfully"));
+        }
+        catch (UnauthorizedAccessException ex)
+        {
+            return StatusCode(403, ApiResponse<GroupUserDto>.Fail(ex.Message));
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(ApiResponse<GroupUserDto>.Fail(ex.Message));
+        }
     }
 }

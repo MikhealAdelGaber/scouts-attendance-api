@@ -22,7 +22,9 @@ public class JwtService : IJwtService
         var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(_config["Jwt:Key"]!));
         var creds = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);
 
-        bool isAdmin = user.Role == Domain.Enums.UserRole.SystemAdmin;
+        bool isAdmin           = user.Role == Domain.Enums.UserRole.SystemAdmin;
+        bool isGroupLeaderLike = user.Role == Domain.Enums.UserRole.GroupLeader
+                              || user.Role == Domain.Enums.UserRole.GroupLeaderAdmin;
 
         // Derive effective action-permission values from role + explicit flags
         bool canAttend = isAdmin
@@ -31,14 +33,10 @@ public class JwtService : IJwtService
         bool canEdit   = isAdmin || user.CanEditMembers;
         bool canEvents = isAdmin || user.CanCreateEvents;
         bool canTrips  = isAdmin || user.CanAccessTrips;
-        // Badges: SystemAdmin + GroupLeader always true; others need the flag
-        bool canBadges   = isAdmin
-                         || user.Role == Domain.Enums.UserRole.GroupLeader
-                         || user.CanAccessBadges;
+        // Badges: SystemAdmin + GroupLeader + GroupLeaderAdmin always true; others need the flag
+        bool canBadges   = isAdmin || isGroupLeaderLike || user.CanAccessBadges;
         // Projects: same pattern as badges
-        bool canProjects = isAdmin
-                         || user.Role == Domain.Enums.UserRole.GroupLeader
-                         || user.CanAccessProjects;
+        bool canProjects = isAdmin || isGroupLeaderLike || user.CanAccessProjects;
 
         // Page-access permissions — SystemAdmin always true; others use stored value
         bool B(bool stored) => isAdmin || stored;

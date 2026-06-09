@@ -12,6 +12,7 @@ public interface ICurrentUserService
     bool    IsAuthenticated    { get; }
     bool    IsSystemAdmin      { get; }
     bool    IsGroupLeader      { get; }
+    bool    IsGroupLeaderAdmin { get; }
     bool    IsAttendanceOnly   { get; }
     /// <summary>True when the user has a TroopId and is NOT a SystemAdmin.
     /// All data queries are scoped to that troop.</summary>

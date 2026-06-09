@@ -59,7 +59,7 @@ public class AttendanceController : ControllerBase
     }
 
     [HttpPost("mark")]
-    [Authorize(Roles = "SystemAdmin,GroupLeader,AttendanceOnly")]
+    [Authorize(Roles = "SystemAdmin,GroupLeader,AttendanceOnly,GroupLeaderAdmin")]
     public async Task<ActionResult<ApiResponse<AttendanceDto>>> Mark([FromBody] MarkAttendanceDto dto)
     {
         try
@@ -73,7 +73,7 @@ public class AttendanceController : ControllerBase
     }
 
     [HttpPost("bulk")]
-    [Authorize(Roles = "SystemAdmin,GroupLeader,AttendanceOnly")]
+    [Authorize(Roles = "SystemAdmin,GroupLeader,AttendanceOnly,GroupLeaderAdmin")]
     public async Task<ActionResult<ApiResponse<IEnumerable<AttendanceDto>>>> BulkMark([FromBody] BulkAttendanceDto dto)
     {
         try
@@ -88,7 +88,7 @@ public class AttendanceController : ControllerBase
     }
 
     [HttpPost("qr")]
-    [Authorize(Roles = "SystemAdmin,GroupLeader,AttendanceOnly")]
+    [Authorize(Roles = "SystemAdmin,GroupLeader,AttendanceOnly,GroupLeaderAdmin")]
     public async Task<ActionResult<ApiResponse<AttendanceDto>>> MarkByQr([FromBody] QrAttendanceDto dto)
     {
         try

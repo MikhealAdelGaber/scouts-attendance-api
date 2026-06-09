@@ -120,7 +120,7 @@ public class BadgesController : ControllerBase
     /// <summary>DELETE /api/badges/member/{memberId}/{memberBadgeId} — remove award.
     /// Allowed: SystemAdmin or GroupLeader only.</summary>
     [HttpDelete("member/{memberId:guid}/{memberBadgeId:guid}")]
-    [Authorize(Roles = "SystemAdmin,GroupLeader")]
+    [Authorize(Roles = "SystemAdmin,GroupLeader,GroupLeaderAdmin")]
     public async Task<ActionResult<ApiResponse>> Remove(Guid memberId, Guid memberBadgeId)
     {
         var ok = await _service.RemoveMemberBadgeAsync(memberId, memberBadgeId);

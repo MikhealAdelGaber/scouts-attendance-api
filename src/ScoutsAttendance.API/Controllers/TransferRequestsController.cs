@@ -28,7 +28,7 @@ public class TransferRequestsController : ControllerBase
     /// Allowed: GroupLeader (own group members) or SystemAdmin.
     /// </summary>
     [HttpPost]
-    [Authorize(Roles = "SystemAdmin,GroupLeader")]
+    [Authorize(Roles = "SystemAdmin,GroupLeader,GroupLeaderAdmin")]
     public async Task<ActionResult<ApiResponse<TransferRequestDto>>> Create(
         [FromBody] CreateTransferRequestDto dto)
     {
@@ -48,7 +48,7 @@ public class TransferRequestsController : ControllerBase
     /// POST /api/transfer-requests/bulk — create transfer requests for multiple members at once.
     /// </summary>
     [HttpPost("bulk")]
-    [Authorize(Roles = "SystemAdmin,GroupLeader")]
+    [Authorize(Roles = "SystemAdmin,GroupLeader,GroupLeaderAdmin")]
     public async Task<ActionResult<ApiResponse<BulkTransferRequestResultDto>>> BulkCreate(
         [FromBody] BulkCreateTransferRequestDto dto)
     {
@@ -72,7 +72,7 @@ public class TransferRequestsController : ControllerBase
     /// SystemAdmin sees all; GroupLeader sees own group's (from/to).
     /// </summary>
     [HttpGet]
-    [Authorize(Roles = "SystemAdmin,GroupLeader")]
+    [Authorize(Roles = "SystemAdmin,GroupLeader,GroupLeaderAdmin")]
     public async Task<ActionResult<ApiResponse<IEnumerable<TransferRequestDto>>>> GetList()
     {
         var result = await _service.GetListAsync();
@@ -119,7 +119,7 @@ public class TransferRequestsController : ControllerBase
     /// GroupLeader (own group) or SystemAdmin.
     /// </summary>
     [HttpDelete("{id:guid}")]
-    [Authorize(Roles = "SystemAdmin,GroupLeader")]
+    [Authorize(Roles = "SystemAdmin,GroupLeader,GroupLeaderAdmin")]
     public async Task<ActionResult<ApiResponse>> Cancel(Guid id)
     {
         var (ok, error) = await _service.CancelAsync(id);
@@ -134,7 +134,7 @@ public class TransferRequestsController : ControllerBase
     /// GET /api/members/{memberId}/transfer-history — approved transfer history for a member.
     /// </summary>
     [HttpGet("/api/members/{memberId:guid}/transfer-history")]
-    [Authorize(Roles = "SystemAdmin,GroupLeader")]
+    [Authorize(Roles = "SystemAdmin,GroupLeader,GroupLeaderAdmin")]
     public async Task<ActionResult<ApiResponse<IEnumerable<TransferRequestDto>>>> GetMemberHistory(Guid memberId)
     {
         var result = await _service.GetMemberHistoryAsync(memberId);
@@ -147,7 +147,7 @@ public class TransferRequestsController : ControllerBase
     /// GET /api/transfer-requests/pending-count — count of pending requests visible to the user.
     /// </summary>
     [HttpGet("pending-count")]
-    [Authorize(Roles = "SystemAdmin,GroupLeader")]
+    [Authorize(Roles = "SystemAdmin,GroupLeader,GroupLeaderAdmin")]
     public async Task<ActionResult<ApiResponse<int>>> GetPendingCount()
     {
         var count = await _service.GetPendingCountAsync();
@@ -161,7 +161,7 @@ public class TransferRequestsController : ControllerBase
     /// Read-only. Returns snapshots created at each transfer-approval, ordered newest first.
     /// </summary>
     [HttpGet("/api/members/{memberId:guid}/transfer-archive")]
-    [Authorize(Roles = "SystemAdmin,GroupLeader")]
+    [Authorize(Roles = "SystemAdmin,GroupLeader,GroupLeaderAdmin")]
     public async Task<ActionResult<ApiResponse<IEnumerable<MemberTransferArchiveDto>>>> GetMemberArchive(Guid memberId)
     {
         var result = await _service.GetMemberArchiveAsync(memberId);

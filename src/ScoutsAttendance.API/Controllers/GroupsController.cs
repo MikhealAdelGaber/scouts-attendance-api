@@ -29,7 +29,7 @@ public class GroupsController : ControllerBase
     /// don't belong to.
     /// </summary>
     [HttpGet("all-for-transfer")]
-    [Authorize(Roles = "SystemAdmin,GroupLeader")]
+    [Authorize(Roles = "SystemAdmin,GroupLeader,GroupLeaderAdmin")]
     public async Task<ActionResult<ApiResponse<IEnumerable<GroupDto>>>> GetAllForTransfer()
     {
         var result = await _service.GetAllForTransferAsync();
@@ -52,7 +52,7 @@ public class GroupsController : ControllerBase
     }
 
     [HttpPut("{id:guid}")]
-    [Authorize(Roles = "SystemAdmin,GroupLeader")]
+    [Authorize(Roles = "SystemAdmin,GroupLeader,GroupLeaderAdmin")]
     public async Task<ActionResult<ApiResponse<GroupDto>>> Update(Guid id, [FromBody] UpdateGroupDto dto)
     {
         var result = await _service.UpdateAsync(id, dto);

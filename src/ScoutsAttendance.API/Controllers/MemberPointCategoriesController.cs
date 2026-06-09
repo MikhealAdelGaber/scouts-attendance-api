@@ -23,7 +23,7 @@ public class MemberPointCategoriesController : ControllerBase
     }
 
     [HttpPost]
-    [Authorize(Roles = "SystemAdmin,GroupLeader")]
+    [Authorize(Roles = "SystemAdmin,GroupLeader,GroupLeaderAdmin")]
     public async Task<ActionResult<ApiResponse<PointCategoryDto>>> Create([FromBody] CreatePointCategoryDto dto)
     {
         var result = await _service.CreateMemberCategoryAsync(dto);
@@ -36,7 +36,7 @@ public class MemberPointCategoriesController : ControllerBase
     /// Returns 409 Conflict when the category is in use.
     /// </summary>
     [HttpDelete("{id:guid}")]
-    [Authorize(Roles = "SystemAdmin,GroupLeader")]
+    [Authorize(Roles = "SystemAdmin,GroupLeader,GroupLeaderAdmin")]
     public async Task<ActionResult<ApiResponse>> Delete(Guid id)
     {
         var (ok, error) = await _service.DeleteMemberCategoryAsync(id);

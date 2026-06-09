@@ -92,7 +92,7 @@ public class TripsController : ControllerBase
     /// GroupLeader/AttendanceOnly get GroupId auto-set from JWT.
     /// </summary>
     [HttpPost]
-    [Authorize(Roles = "SystemAdmin,GroupLeader")]
+    [Authorize(Roles = "SystemAdmin,GroupLeader,GroupLeaderAdmin")]
     public async Task<ActionResult<ApiResponse<TripDto>>> Create([FromBody] CreateTripDto dto)
     {
         var deny = RequireTripsPermission();
@@ -120,7 +120,7 @@ public class TripsController : ControllerBase
 
     /// <summary>Update a trip (GroupLeader+ only).</summary>
     [HttpPut("{id:guid}")]
-    [Authorize(Roles = "SystemAdmin,GroupLeader")]
+    [Authorize(Roles = "SystemAdmin,GroupLeader,GroupLeaderAdmin")]
     public async Task<ActionResult<ApiResponse<TripDto>>> Update(Guid id, [FromBody] UpdateTripDto dto)
     {
         var deny = RequireTripsPermission();
@@ -138,7 +138,7 @@ public class TripsController : ControllerBase
 
     /// <summary>Delete a trip (GroupLeader+ only).</summary>
     [HttpDelete("{id:guid}")]
-    [Authorize(Roles = "SystemAdmin,GroupLeader")]
+    [Authorize(Roles = "SystemAdmin,GroupLeader,GroupLeaderAdmin")]
     public async Task<ActionResult<ApiResponse>> Delete(Guid id)
     {
         var deny = RequireTripsPermission();

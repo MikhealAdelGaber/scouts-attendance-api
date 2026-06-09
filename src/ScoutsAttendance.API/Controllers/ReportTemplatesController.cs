@@ -8,7 +8,7 @@ namespace ScoutsAttendance.API.Controllers;
 
 [ApiController]
 [Route("api/report-templates")]
-[Authorize(Roles = "SystemAdmin,GroupLeader")]
+[Authorize(Roles = "SystemAdmin,GroupLeader,GroupLeaderAdmin")]
 public class ReportTemplatesController : ControllerBase
 {
     private readonly IReportService      _report;

@@ -28,7 +28,7 @@ public class PointsController : ControllerBase
 
     /// <summary>Update attendance point values — admin / leader only.</summary>
     [HttpPut("attendance-settings/{id:guid}")]
-    [Authorize(Roles = "SystemAdmin,GroupLeader")]
+    [Authorize(Roles = "SystemAdmin,GroupLeader,GroupLeaderAdmin")]
     public async Task<ActionResult<ApiResponse<PointCategoryDto>>> UpdateAttendanceSettings(
         Guid id, [FromBody] UpdateAttendancePointsDto dto)
     {
@@ -49,7 +49,7 @@ public class PointsController : ControllerBase
 
     /// <summary>Award points to a member — admin, leader, or attendance user.</summary>
     [HttpPost("members")]
-    [Authorize(Roles = "SystemAdmin,GroupLeader,AttendanceOnly")]
+    [Authorize(Roles = "SystemAdmin,GroupLeader,AttendanceOnly,GroupLeaderAdmin")]
     public async Task<ActionResult<ApiResponse<MemberPointsDto>>> AddMemberPoints([FromBody] AddMemberPointsDto dto)
     {
         var result = await _service.AddMemberPointsAsync(dto);
@@ -58,7 +58,7 @@ public class PointsController : ControllerBase
 
     /// <summary>Remove a member points record — admin, leader, or attendance user.</summary>
     [HttpDelete("members/{pointsId:guid}")]
-    [Authorize(Roles = "SystemAdmin,GroupLeader,AttendanceOnly")]
+    [Authorize(Roles = "SystemAdmin,GroupLeader,AttendanceOnly,GroupLeaderAdmin")]
     public async Task<ActionResult<ApiResponse>> DeleteMemberPoints(Guid pointsId)
     {
         var ok = await _service.DeleteMemberPointsAsync(pointsId);
@@ -76,7 +76,7 @@ public class PointsController : ControllerBase
 
     /// <summary>Award points to a troop — admin, leader, or attendance user.</summary>
     [HttpPost("troops")]
-    [Authorize(Roles = "SystemAdmin,GroupLeader,AttendanceOnly")]
+    [Authorize(Roles = "SystemAdmin,GroupLeader,AttendanceOnly,GroupLeaderAdmin")]
     public async Task<ActionResult<ApiResponse<TroopPointsDto>>> AddTroopPoints([FromBody] AddTroopPointsDto dto)
     {
         var result = await _service.AddTroopPointsAsync(dto);
@@ -85,7 +85,7 @@ public class PointsController : ControllerBase
 
     /// <summary>Remove a troop points record — admin, leader, or attendance user.</summary>
     [HttpDelete("troops/{pointsId:guid}")]
-    [Authorize(Roles = "SystemAdmin,GroupLeader,AttendanceOnly")]
+    [Authorize(Roles = "SystemAdmin,GroupLeader,AttendanceOnly,GroupLeaderAdmin")]
     public async Task<ActionResult<ApiResponse>> DeleteTroopPoints(Guid pointsId)
     {
         var ok = await _service.DeleteTroopPointsAsync(pointsId);

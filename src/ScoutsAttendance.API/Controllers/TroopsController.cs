@@ -30,7 +30,7 @@ public class TroopsController : ControllerBase
     }
 
     [HttpPost]
-    [Authorize(Roles = "SystemAdmin,GroupLeader")]
+    [Authorize(Roles = "SystemAdmin,GroupLeader,GroupLeaderAdmin")]
     public async Task<ActionResult<ApiResponse<TroopDto>>> Create([FromBody] CreateTroopDto dto)
     {
         var result = await _service.CreateAsync(dto);
@@ -38,7 +38,7 @@ public class TroopsController : ControllerBase
     }
 
     [HttpPut("{id:guid}")]
-    [Authorize(Roles = "SystemAdmin,GroupLeader")]
+    [Authorize(Roles = "SystemAdmin,GroupLeader,GroupLeaderAdmin")]
     public async Task<ActionResult<ApiResponse<TroopDto>>> Update(Guid id, [FromBody] UpdateTroopDto dto)
     {
         var result = await _service.UpdateAsync(id, dto);
@@ -46,7 +46,7 @@ public class TroopsController : ControllerBase
     }
 
     [HttpDelete("{id:guid}")]
-    [Authorize(Roles = "SystemAdmin,GroupLeader")]
+    [Authorize(Roles = "SystemAdmin,GroupLeader,GroupLeaderAdmin")]
     public async Task<ActionResult<ApiResponse>> Delete(Guid id)
     {
         var ok = await _service.DeleteAsync(id);
@@ -58,7 +58,7 @@ public class TroopsController : ControllerBase
     /// Only GroupLeader and SystemAdmin can reset a token.
     /// </summary>
     [HttpPost("{id:guid}/reset-token")]
-    [Authorize(Roles = "SystemAdmin,GroupLeader")]
+    [Authorize(Roles = "SystemAdmin,GroupLeader,GroupLeaderAdmin")]
     public async Task<ActionResult<ApiResponse<string>>> ResetToken(Guid id)
     {
         var newToken = await _service.ResetShareTokenAsync(id);

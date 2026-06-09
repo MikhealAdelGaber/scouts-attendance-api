@@ -23,7 +23,7 @@ public class TroopPointCategoriesController : ControllerBase
     }
 
     [HttpPost]
-    [Authorize(Roles = "SystemAdmin,GroupLeader")]
+    [Authorize(Roles = "SystemAdmin,GroupLeader,GroupLeaderAdmin")]
     public async Task<ActionResult<ApiResponse<PointCategoryDto>>> Create([FromBody] CreatePointCategoryDto dto)
     {
         var result = await _service.CreateTroopCategoryAsync(dto);
@@ -31,7 +31,7 @@ public class TroopPointCategoriesController : ControllerBase
     }
 
     [HttpDelete("{id:guid}")]
-    [Authorize(Roles = "SystemAdmin,GroupLeader")]
+    [Authorize(Roles = "SystemAdmin,GroupLeader,GroupLeaderAdmin")]
     public async Task<ActionResult<ApiResponse>> Delete(Guid id)
     {
         var (ok, error) = await _service.DeleteTroopCategoryAsync(id);

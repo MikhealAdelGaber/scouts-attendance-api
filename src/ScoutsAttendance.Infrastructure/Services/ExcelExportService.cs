@@ -1,10 +1,12 @@
 using ClosedXML.Excel;
 using Microsoft.EntityFrameworkCore;
 using ScoutsAttendance.Application.DTOs.Admin;
+using ScoutsAttendance.Application.DTOs.ExamScores;
 using ScoutsAttendance.Application.DTOs.Projects;
 using ScoutsAttendance.Application.DTOs.Reports;
 using ScoutsAttendance.Application.Services;
 using ScoutsAttendance.Application.Interfaces;
+using ScoutsAttendance.Domain.Entities;
 using ScoutsAttendance.Domain.Enums;
 
 namespace ScoutsAttendance.Infrastructure.Services;
@@ -234,7 +236,7 @@ public class ExcelExportService : IExcelExportService
             .ToListAsync();
         var examMap = allExamScores
             .GroupBy(e => e.MemberId)
-            .ToDictionary(g => g.Key, g => (decimal?)g.OrderByDescending(e => e.Year).First().Score);
+            .ToDictionary(g => g.Key, g => (decimal?)g.OrderByDescending(e => e.Year).First().TotalScore);
 
         // ── 6. Load projects per group ──────────────────────────────────────────
         var projects = await _uow.Projects.Query()
@@ -649,13 +651,19 @@ public class ExcelExportService : IExcelExportService
                                 .ThenBy(x => x.Year)
                                 .ToListAsync();
 
+        // Load configs for percentage calculation
+        var groupIds = scores.Select(s => s.Member?.Troop?.GroupId ?? Guid.Empty).Distinct().ToList();
+        var years    = scores.Select(s => s.Year).Distinct().ToList();
+        var cfgMap   = await LoadExamConfigsAsync(groupIds, years);
+
         using var wb = new XLWorkbook();
         var ws = wb.Worksheets.Add("Exam Scores");
 
+        const int colCount = 8;
         AddLogoRow(ws, "End-of-Year Exam Scores");
-        ws.Range(1, 1, 1, 6).Merge();
+        ws.Range(1, 1, 1, colCount).Merge();
 
-        var headers = new[] { "Member", "Troop", "Year", "Score (/100)", "Grade", "Notes" };
+        var headers = new[] { "Member", "Troop", "Year", "Theory", "Practical", "Total", "% Score", "Grade", "Notes" };
         var hRow = ws.Row(3);
         for (int i = 0; i < headers.Length; i++) hRow.Cell(i + 1).Value = headers[i];
         StyleHeader(hRow, headers.Length);
@@ -663,33 +671,351 @@ public class ExcelExportService : IExcelExportService
         int row = 4;
         foreach (var s in scores)
         {
-            var grade = s.Score switch
-            {
-                >= 90 => "Excellent",
-                >= 75 => "Very Good",
-                >= 60 => "Good",
-                >= 50 => "Pass",
-                _     => "Fail"
-            };
+            var gid  = s.Member?.Troop?.GroupId ?? Guid.Empty;
+            cfgMap.TryGetValue((gid, s.Year), out var cfg);
+            decimal totalMax = cfg is not null ? cfg.TheoreticalMaxScore + cfg.PracticalMaxScore : 0m;
+            decimal total    = s.TotalScore;
+            decimal? pct     = totalMax > 0 ? Math.Round(total / totalMax * 100m, 2) : null;
+            string   grade   = ExamScoreService.GetGrade((double)(pct ?? (totalMax > 0 ? 0 : total)));
+
             ws.Cell(row, 1).Value = s.Member?.FullName ?? "";
             ws.Cell(row, 2).Value = s.Member?.Troop?.Name ?? "";
             ws.Cell(row, 3).Value = s.Year;
-            ws.Cell(row, 4).Value = s.Score;
-            ws.Cell(row, 5).Value = grade;
-            ws.Cell(row, 6).Value = s.Notes ?? "";
+            ws.Cell(row, 4).Value = (double)s.TheoreticalScore;
+            ws.Cell(row, 5).Value = (double)s.PracticalScore;
+            ws.Cell(row, 6).Value = (double)total;
+            ws.Cell(row, 6).Style.Font.Bold = true;
 
-            // Colour pass/fail
-            var scoreColor = s.Score >= 50 ? XLColor.FromHtml("#c8e6c9") : XLColor.FromHtml("#ffcdd2");
-            ws.Cell(row, 4).Style.Fill.BackgroundColor = scoreColor;
+            if (pct.HasValue)
+            {
+                ws.Cell(row, 7).Value = (double)pct.Value / 100.0;
+                ws.Cell(row, 7).Style.NumberFormat.Format = "0.0%";
+                ws.Cell(row, 7).Style.Fill.BackgroundColor = pct.Value >= 50
+                    ? XLColor.FromHtml("#c8e6c9") : XLColor.FromHtml("#ffcdd2");
+            }
+            else { ws.Cell(row, 7).Value = "—"; }
+
+            ws.Cell(row, 8).Value = grade;
+            ws.Cell(row, 9).Value = s.Notes ?? "";
 
             if (row % 2 == 0)
-                ws.Range(row, 1, row, headers.Length).Style.Fill.BackgroundColor = XLColor.FromHtml("#f3f4f9");
+                ws.Range(row, 1, row, 9).Style.Fill.BackgroundColor = XLColor.FromHtml("#f3f4f9");
             row++;
         }
 
         ws.Columns().AdjustToContents();
         ws.SheetView.FreezeRows(3);
         return WorkbookToBytes(wb);
+    }
+
+    // ─── Exam Score Template Export ────────────────────────────────────────────
+
+    public async Task<byte[]> ExportExamScoreTemplateAsync(Guid groupId, int year, Guid? troopId = null)
+    {
+        // Load members in this group (optionally filtered by troop)
+        var memberQuery = _uow.Members.Query()
+            .Include(m => m.Troop)
+            .Where(m => m.GroupId == groupId && !m.IsDeleted);
+        if (troopId.HasValue) memberQuery = memberQuery.Where(m => m.TroopId == troopId.Value);
+        var members = await memberQuery
+            .OrderBy(m => m.Troop == null ? "" : m.Troop.Name)
+            .ThenBy(m => m.LastName)
+            .ToListAsync();
+
+        // Load config so we can show max scores in header
+        var cfg = await _uow.ExamScoreConfigs.Query()
+            .FirstOrDefaultAsync(c => c.GroupId == groupId && c.Year == year && !c.IsDeleted);
+
+        decimal theoMax = cfg?.TheoreticalMaxScore ?? 50m;
+        decimal pracMax = cfg?.PracticalMaxScore   ?? 50m;
+        decimal totMax  = theoMax + pracMax;
+
+        // Load existing scores for this year so we can pre-fill them
+        var memberIds = members.Select(m => m.Id).ToList();
+        var existing = await _uow.MemberExamScores.Query()
+            .Where(x => memberIds.Contains(x.MemberId) && x.Year == year && !x.IsDeleted)
+            .ToListAsync();
+        var scoreMap = existing.ToDictionary(x => x.MemberId);
+
+        using var wb = new XLWorkbook();
+        var ws = wb.Worksheets.Add("Exam Scores");
+
+        const int colCount = 7;
+
+        // Title row
+        AddLogoRow(ws, $"Exam Scores Entry Template — {year}");
+        ws.Range(1, 1, 1, colCount).Merge();
+
+        // Sub-header: max scores info
+        ws.Cell(2, 1).Value = $"Theory Max: {theoMax}  |  Practical Max: {pracMax}  |  Total Max: {totMax}  |  Year: {year}";
+        ws.Cell(2, 1).Style.Font.Italic  = true;
+        ws.Cell(2, 1).Style.Font.FontColor = XLColor.FromHtml("#555555");
+        ws.Range(2, 1, 2, colCount).Merge();
+
+        // Instructions row
+        ws.Cell(3, 1).Value = "Fill in Theoretical and Practical scores only. Do NOT change MemberID column. Leave blank to skip.";
+        ws.Cell(3, 1).Style.Font.Italic = true;
+        ws.Cell(3, 1).Style.Font.FontColor = XLColor.FromHtml("#c62828");
+        ws.Range(3, 1, 3, colCount).Merge();
+
+        // Header row
+        var hRow = ws.Row(5);
+        var headers = new[] { "MemberID", "Member Name", "Troop", $"Theory (/{theoMax})", $"Practical (/{pracMax})", $"Total (/{totMax})", "Notes" };
+        for (int i = 0; i < headers.Length; i++) hRow.Cell(i + 1).Value = headers[i];
+        StyleHeader(hRow, headers.Length);
+        ws.SheetView.FreezeRows(5);
+
+        int dataStartRow = 6;
+        int row = dataStartRow;
+        foreach (var m in members)
+        {
+            scoreMap.TryGetValue(m.Id, out var existingScore);
+
+            ws.Cell(row, 1).Value = m.CustomId.ToString("D6");
+            ws.Cell(row, 1).Style.Font.Bold = true;
+            ws.Cell(row, 2).Value = m.FullName;
+            ws.Cell(row, 3).Value = m.Troop?.Name ?? "—";
+
+            if (existingScore is not null)
+            {
+                ws.Cell(row, 4).Value = (double)existingScore.TheoreticalScore;
+                ws.Cell(row, 5).Value = (double)existingScore.PracticalScore;
+            }
+            // Col 6: Total formula  =D{row}+E{row}
+            ws.Cell(row, 6).FormulaA1 = $"=D{row}+E{row}";
+            ws.Cell(row, 6).Style.Fill.BackgroundColor = XLColor.FromHtml("#f5f5f5");
+            ws.Cell(row, 6).Style.Font.Italic = true;
+
+            ws.Cell(row, 7).Value = existingScore?.Notes ?? "";
+
+            // Lock MemberID column so it is obvious which column must not be changed
+            ws.Cell(row, 1).Style.Fill.BackgroundColor = XLColor.FromHtml("#e8eaf6");
+            ws.Cell(row, 2).Style.Fill.BackgroundColor = XLColor.FromHtml("#e8eaf6");
+            ws.Cell(row, 3).Style.Fill.BackgroundColor = XLColor.FromHtml("#e8eaf6");
+
+            if (row % 2 == 0)
+                ws.Range(row, 1, row, colCount).Style.Fill.BackgroundColor = XLColor.FromHtml("#f9f9f9");
+
+            row++;
+        }
+
+        // Set column widths
+        ws.Column(1).Width = 12;
+        ws.Column(2).Width = 28;
+        ws.Column(3).Width = 18;
+        ws.Column(4).Width = 18;
+        ws.Column(5).Width = 18;
+        ws.Column(6).Width = 16;
+        ws.Column(7).Width = 24;
+
+        return WorkbookToBytes(wb);
+    }
+
+    // ─── Exam Score Import ─────────────────────────────────────────────────────
+
+    public async Task<ImportExamScoreResultDto> ImportExamScoresAsync(
+        Stream file, Guid groupId, int year)
+    {
+        // Load config for validation
+        var cfg = await _uow.ExamScoreConfigs.Query()
+            .FirstOrDefaultAsync(c => c.GroupId == groupId && c.Year == year && !c.IsDeleted);
+
+        decimal theoMax = cfg?.TheoreticalMaxScore ?? decimal.MaxValue;
+        decimal pracMax  = cfg?.PracticalMaxScore   ?? decimal.MaxValue;
+
+        // Load all members in this group (keyed by 6-digit CustomId)
+        var members = await _uow.Members.Query()
+            .Where(m => m.GroupId == groupId && !m.IsDeleted)
+            .ToListAsync();
+        var memberByCustomId = members.ToDictionary(m => m.CustomId);
+
+        // Load existing scores for upsert
+        var memberIds = members.Select(m => m.Id).ToList();
+        var existingScores = await _uow.MemberExamScores.Query()
+            .Where(x => memberIds.Contains(x.MemberId) && x.Year == year && !x.IsDeleted)
+            .ToListAsync();
+        var existingMap = existingScores.ToDictionary(x => x.MemberId);
+
+        var skipped   = new List<ImportSkippedRowDto>();
+        var toInsert  = new List<MemberExamScore>();
+        var toUpdate  = new List<MemberExamScore>();
+
+        using var wb = new XLWorkbook(file);
+        var ws = wb.Worksheets.First();
+
+        // Find header row: scan first 10 rows for "MemberID" in column 1
+        int headerRow = 5; // default
+        for (int r = 1; r <= 10; r++)
+        {
+            var val = ws.Cell(r, 1).GetString().Trim();
+            if (val.Equals("MemberID", StringComparison.OrdinalIgnoreCase))
+            {
+                headerRow = r;
+                break;
+            }
+        }
+
+        int dataStart = headerRow + 1;
+        int lastRow   = ws.LastRowUsed()?.RowNumber() ?? dataStart;
+
+        for (int r = dataStart; r <= lastRow; r++)
+        {
+            var memberIdStr  = ws.Cell(r, 1).GetString().Trim();
+            var theoStr      = ws.Cell(r, 4).GetString().Trim();
+            var pracStr      = ws.Cell(r, 5).GetString().Trim();
+            var notes        = ws.Cell(r, 7).GetString().Trim();
+
+            // Skip completely blank rows
+            if (string.IsNullOrEmpty(memberIdStr) && string.IsNullOrEmpty(theoStr) && string.IsNullOrEmpty(pracStr))
+                continue;
+
+            // Both score cells empty → skip (don't overwrite existing)
+            if (string.IsNullOrEmpty(theoStr) && string.IsNullOrEmpty(pracStr))
+            {
+                skipped.Add(new ImportSkippedRowDto
+                {
+                    RowNumber  = r,
+                    MemberId   = memberIdStr,
+                    MemberName = ws.Cell(r, 2).GetString(),
+                    Reason     = "Both score cells are empty — row skipped."
+                });
+                continue;
+            }
+
+            // Parse MemberID
+            if (!int.TryParse(memberIdStr, out int customId))
+            {
+                skipped.Add(new ImportSkippedRowDto
+                {
+                    RowNumber  = r,
+                    MemberId   = memberIdStr,
+                    MemberName = ws.Cell(r, 2).GetString(),
+                    Reason     = "Invalid or missing MemberID."
+                });
+                continue;
+            }
+
+            if (!memberByCustomId.TryGetValue(customId, out var member))
+            {
+                skipped.Add(new ImportSkippedRowDto
+                {
+                    RowNumber  = r,
+                    MemberId   = memberIdStr,
+                    MemberName = ws.Cell(r, 2).GetString(),
+                    Reason     = $"Member #{customId:D6} not found in this group."
+                });
+                continue;
+            }
+
+            // Parse scores — treat empty as "keep existing"
+            decimal? theoVal = null;
+            decimal? pracVal = null;
+
+            if (!string.IsNullOrEmpty(theoStr))
+            {
+                if (!decimal.TryParse(theoStr, out var t))
+                {
+                    skipped.Add(new ImportSkippedRowDto
+                    {
+                        RowNumber  = r,
+                        MemberId   = memberIdStr,
+                        MemberName = member.FullName,
+                        Reason     = $"Invalid theoretical score value: '{theoStr}'."
+                    });
+                    continue;
+                }
+                if (t < 0 || t > theoMax)
+                {
+                    skipped.Add(new ImportSkippedRowDto
+                    {
+                        RowNumber  = r,
+                        MemberId   = memberIdStr,
+                        MemberName = member.FullName,
+                        Reason     = $"Theoretical score {t} exceeds maximum {theoMax}."
+                    });
+                    continue;
+                }
+                theoVal = t;
+            }
+
+            if (!string.IsNullOrEmpty(pracStr))
+            {
+                if (!decimal.TryParse(pracStr, out var p))
+                {
+                    skipped.Add(new ImportSkippedRowDto
+                    {
+                        RowNumber  = r,
+                        MemberId   = memberIdStr,
+                        MemberName = member.FullName,
+                        Reason     = $"Invalid practical score value: '{pracStr}'."
+                    });
+                    continue;
+                }
+                if (p < 0 || p > pracMax)
+                {
+                    skipped.Add(new ImportSkippedRowDto
+                    {
+                        RowNumber  = r,
+                        MemberId   = memberIdStr,
+                        MemberName = member.FullName,
+                        Reason     = $"Practical score {p} exceeds maximum {pracMax}."
+                    });
+                    continue;
+                }
+                pracVal = p;
+            }
+
+            if (existingMap.TryGetValue(member.Id, out var existing))
+            {
+                // Update: only overwrite non-empty cells
+                if (theoVal.HasValue) existing.TheoreticalScore = theoVal.Value;
+                if (pracVal.HasValue) existing.PracticalScore   = pracVal.Value;
+                if (!string.IsNullOrEmpty(notes)) existing.Notes = notes;
+                existing.UpdatedAt = DateTime.UtcNow;
+                toUpdate.Add(existing);
+            }
+            else
+            {
+                toInsert.Add(new MemberExamScore
+                {
+                    MemberId          = member.Id,
+                    Year              = year,
+                    TheoreticalScore  = theoVal ?? 0m,
+                    PracticalScore    = pracVal ?? 0m,
+                    Notes             = string.IsNullOrEmpty(notes) ? null : notes,
+                    CreatedBy         = _currentUser.UserId
+                });
+            }
+        }
+
+        // Persist in a single transaction
+        await _uow.ExecuteInTransactionAsync(async () =>
+        {
+            foreach (var s in toUpdate)
+                _uow.MemberExamScores.Update(s);
+            foreach (var s in toInsert)
+                await _uow.MemberExamScores.AddAsync(s);
+            await _uow.SaveChangesAsync();
+        });
+
+        return new ImportExamScoreResultDto
+        {
+            ImportedCount = toInsert.Count + toUpdate.Count,
+            SkippedCount  = skipped.Count,
+            SkippedRows   = skipped
+        };
+    }
+
+    // ─── Exam Score Config helper ──────────────────────────────────────────────
+
+    private async Task<Dictionary<(Guid, int), ScoutsAttendance.Domain.Entities.ExamScoreConfig>> LoadExamConfigsAsync(
+        List<Guid> groupIds, List<int> years)
+    {
+        if (groupIds.Count == 0 || years.Count == 0) return [];
+        var list = await _uow.ExamScoreConfigs.Query()
+            .Where(c => groupIds.Contains(c.GroupId) && years.Contains(c.Year) && !c.IsDeleted)
+            .ToListAsync();
+        return list.ToDictionary(c => (c.GroupId, c.Year));
     }
 
     // ─── Yearly Archive Export ──────────────────────────────────────────────

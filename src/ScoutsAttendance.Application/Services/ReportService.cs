@@ -201,8 +201,27 @@ public class ReportService : IReportService
             .Where(e => memberIds.Contains(e.MemberId))
             .OrderByDescending(e => e.Year)
             .ToListAsync();
+
+        // Load exam config to compute percentage
+        var groupId = template.GroupId;
+        var examYears = examsList.Select(e => e.Year).Distinct().ToList();
+        var examConfigs = examYears.Count > 0
+            ? await _uow.ExamScoreConfigs.Query()
+                .Where(c => c.GroupId == groupId && examYears.Contains(c.Year) && !c.IsDeleted)
+                .ToListAsync()
+            : new List<Domain.Entities.ExamScoreConfig>();
+        var examConfigMap = examConfigs.ToDictionary(c => c.Year);
+
         var examsByMember = examsList.GroupBy(e => e.MemberId)
-            .ToDictionary(g => g.Key, g => g.First().Score);
+            .ToDictionary(g => g.Key, g =>
+            {
+                var latest   = g.First();
+                var total    = latest.TotalScore;
+                examConfigMap.TryGetValue(latest.Year, out var cfg);
+                decimal max  = cfg is not null ? cfg.TheoreticalMaxScore + cfg.PracticalMaxScore : 0m;
+                // Return as a 0-100 percentage; fall back to TotalScore if no config
+                return max > 0 ? Math.Round(total / max * 100m, 2) : total;
+            });
 
         var projScores = await _uow.ProjectScores.Query()
             .Include(s => s.Project)
@@ -239,7 +258,7 @@ public class ReportService : IReportService
             decimal pointsRate = maxGroupPoints > 0 && pointsByMember.TryGetValue(member.Id, out var pts)
                 ? Math.Round(pts / maxGroupPoints * 100m, 2) : 0m;
 
-            decimal examRate = examsByMember.TryGetValue(member.Id, out var ex) ? ex : 0m;
+            decimal examRate = examsByMember.TryGetValue(member.Id, out var examPct) ? examPct : 0m;
 
             decimal projRate = projRateByMember.TryGetValue(member.Id, out var pr)
                 ? Math.Round(pr, 2) : 0m;

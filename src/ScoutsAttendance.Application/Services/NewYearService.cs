@@ -114,7 +114,7 @@ public class NewYearService : INewYearService
             .GroupBy(e => e.MemberId)
             .ToDictionary(
                 g => g.Key,
-                g => (decimal?)g.OrderByDescending(e => e.Year).First().Score
+                g => (decimal?)g.OrderByDescending(e => e.Year).First().TotalScore
             );
 
         // Projects per group and per member

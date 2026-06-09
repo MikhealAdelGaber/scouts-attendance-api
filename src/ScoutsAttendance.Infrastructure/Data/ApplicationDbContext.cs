@@ -21,6 +21,7 @@ public class ApplicationDbContext : DbContext
     public DbSet<Transfer>         Transfers         => Set<Transfer>();
     public DbSet<MemberExcuse>     MemberExcuses     => Set<MemberExcuse>();
     public DbSet<MemberExamScore>  MemberExamScores  => Set<MemberExamScore>();
+    public DbSet<ExamScoreConfig>  ExamScoreConfigs  => Set<ExamScoreConfig>();
     public DbSet<PendingExcuse>    PendingExcuses    => Set<PendingExcuse>();
 
     // ── Trips ─────────────────────────────────────────────────────────────────
@@ -293,12 +294,28 @@ public class ApplicationDbContext : DbContext
         {
             e.HasIndex(x => x.MemberId);
             e.HasIndex(x => new { x.MemberId, x.Year }).IsUnique();
-            e.Property(x => x.Score).HasColumnType("decimal(5,2)");
+            e.Property(x => x.TheoreticalScore).HasColumnType("decimal(8,2)").HasDefaultValue(0m);
+            e.Property(x => x.PracticalScore).HasColumnType("decimal(8,2)").HasDefaultValue(0m);
             e.HasOne(x => x.Member)
                 .WithMany(m => m.ExamScores)
                 .HasForeignKey(x => x.MemberId)
                 .OnDelete(DeleteBehavior.Cascade);
         });
+
+        // ─── ExamScoreConfig ───────────────────────────────────────────────────
+        mb.Entity<ExamScoreConfig>(e =>
+        {
+            e.ToTable("ExamScoreConfigs");
+            e.HasIndex(x => new { x.GroupId, x.Year }).IsUnique();
+            e.Property(x => x.TheoreticalMaxScore).HasColumnType("decimal(8,2)").HasDefaultValue(50m);
+            e.Property(x => x.PracticalMaxScore).HasColumnType("decimal(8,2)").HasDefaultValue(50m);
+            e.Property(x => x.CreatedBy).HasMaxLength(200);
+            e.HasOne(x => x.Group)
+                .WithMany()
+                .HasForeignKey(x => x.GroupId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+        mb.Entity<ExamScoreConfig>().HasQueryFilter(e => !e.IsDeleted);
 
         // ─── Global soft-delete query filters ──────────────────────────────────
         mb.Entity<User>().HasQueryFilter(e => !e.IsDeleted);

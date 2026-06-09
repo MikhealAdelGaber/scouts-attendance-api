@@ -1,4 +1,5 @@
 using ScoutsAttendance.Application.DTOs.Admin;
+using ScoutsAttendance.Application.DTOs.ExamScores;
 using ScoutsAttendance.Application.DTOs.Projects;
 using ScoutsAttendance.Application.DTOs.Reports;
 
@@ -23,6 +24,12 @@ public interface IExcelExportService
     Task<byte[]> ExportPointsAsync(Guid? troopId = null);
     Task<byte[]> ExportTroopPointsAsync(Guid? troopId = null);
     Task<byte[]> ExportExamScoresAsync(Guid? troopId = null, int? year = null);
+
+    /// <summary>Export a blank score-entry template (all group members, empty score columns).</summary>
+    Task<byte[]> ExportExamScoreTemplateAsync(Guid groupId, int year, Guid? troopId = null);
+
+    /// <summary>Import exam scores from a filled .xlsx file. Returns import result summary.</summary>
+    Task<ImportExamScoreResultDto> ImportExamScoresAsync(Stream file, Guid groupId, int year);
 
     /// <summary>Exports a yearly archive as a two-sheet workbook: summary + per-member stats.</summary>
     Task<byte[]> ExportYearArchiveAsync(YearlyArchiveDetailDto archive);

@@ -302,6 +302,7 @@ public class ExcelExportService : IExcelExportService
                 MemberName        = m.FullName,
                 TroopName         = m.Troop?.Name ?? "",
                 AcademicGrade     = m.AcademicYear,
+                HasNeckerchief    = m.HasNeckerchief,
                 TotalEvents       = total,
                 Present           = present,
                 Late              = late,
@@ -327,19 +328,19 @@ public class ExcelExportService : IExcelExportService
         // ── Sheet: Full Report ────────────────────────────────────────────────
         var wsSummary = wb.Worksheets.Add("Attendance Report");
         AddLogoRow(wsSummary, "Attendance Rate Report — Scouts Attendance System");
-        wsSummary.Range(1, 1, 1, 14).Merge();
+        wsSummary.Range(1, 1, 1, 15).Merge();
 
         // Date range subtitle
         var rangeLabel = $"Period: {(from.HasValue ? from.Value.ToString("yyyy-MM-dd") : "All")} → {(to.HasValue ? to.Value.ToString("yyyy-MM-dd") : "All")}";
         wsSummary.Cell(2, 1).Value = rangeLabel;
         wsSummary.Cell(2, 1).Style.Font.Italic = true;
         wsSummary.Cell(2, 1).Style.Font.FontColor = XLColor.FromHtml("#555555");
-        wsSummary.Range(2, 1, 2, 14).Merge();
+        wsSummary.Range(2, 1, 2, 15).Merge();
 
-        const int sumCols = 14;
+        const int sumCols = 15;
         var sumHeaders = new[]
         {
-            "Rank", "Member", "Troop", "Grade",
+            "Rank", "Member", "Troop", "Grade", "Foulard",
             "Total Events", "Present", "Late", "Too Late", "Excused", "Absent",
             "Attendance %", "Exam Score", "Projects %", "Total Points"
         };
@@ -357,44 +358,37 @@ public class ExcelExportService : IExcelExportService
             wsSummary.Cell(sRow,  2).Value = r.MemberName;
             wsSummary.Cell(sRow,  3).Value = r.TroopName;
             wsSummary.Cell(sRow,  4).Value = r.AcademicGrade ?? "—";
-            wsSummary.Cell(sRow,  5).Value = r.TotalEvents;
-            wsSummary.Cell(sRow,  6).Value = r.Present;
-            wsSummary.Cell(sRow,  7).Value = r.Late;
-            wsSummary.Cell(sRow,  8).Value = r.TooLate;
-            wsSummary.Cell(sRow,  9).Value = r.Excused;
-            wsSummary.Cell(sRow, 10).Value = r.Absent;
+
+            // Foulard (col 5)
+            wsSummary.Cell(sRow,  5).Value = r.HasNeckerchief ? "Yes" : "No";
+            wsSummary.Cell(sRow,  5).Style.Font.Bold = true;
+            wsSummary.Cell(sRow,  5).Style.Fill.BackgroundColor = r.HasNeckerchief
+                ? XLColor.FromHtml("#c8e6c9") : XLColor.FromHtml("#ffcdd2");
+
+            wsSummary.Cell(sRow,  6).Value = r.TotalEvents;
+            wsSummary.Cell(sRow,  7).Value = r.Present;
+            wsSummary.Cell(sRow,  8).Value = r.Late;
+            wsSummary.Cell(sRow,  9).Value = r.TooLate;
+            wsSummary.Cell(sRow, 10).Value = r.Excused;
+            wsSummary.Cell(sRow, 11).Value = r.Absent;
 
             // Attendance %
-            wsSummary.Cell(sRow, 11).Value = r.Rate / 100.0;
-            wsSummary.Cell(sRow, 11).Style.NumberFormat.Format = "0.0%";
-            wsSummary.Cell(sRow, 11).Style.Fill.BackgroundColor = r.Rate switch
+            wsSummary.Cell(sRow, 12).Value = r.Rate / 100.0;
+            wsSummary.Cell(sRow, 12).Style.NumberFormat.Format = "0.0%";
+            wsSummary.Cell(sRow, 12).Style.Fill.BackgroundColor = r.Rate switch
             {
                 >= 90 => XLColor.FromHtml("#c8e6c9"),
                 >= 70 => XLColor.FromHtml("#fff9c4"),
                 >= 50 => XLColor.FromHtml("#ffe0b2"),
                 _     => XLColor.FromHtml("#ffcdd2")
             };
-            wsSummary.Cell(sRow, 11).Style.Font.Bold = true;
+            wsSummary.Cell(sRow, 12).Style.Font.Bold = true;
 
             // Exam Score
             if (r.LatestExamScore.HasValue)
             {
-                wsSummary.Cell(sRow, 12).Value = (double)r.LatestExamScore.Value;
-                wsSummary.Cell(sRow, 12).Style.Fill.BackgroundColor = r.LatestExamScore.Value switch
-                {
-                    >= 80 => XLColor.FromHtml("#c8e6c9"),
-                    >= 60 => XLColor.FromHtml("#fff9c4"),
-                    _     => XLColor.FromHtml("#ffcdd2")
-                };
-            }
-            else { wsSummary.Cell(sRow, 12).Value = "—"; }
-
-            // Projects %
-            if (r.ProjectRate.HasValue)
-            {
-                wsSummary.Cell(sRow, 13).Value = r.ProjectRate.Value / 100.0;
-                wsSummary.Cell(sRow, 13).Style.NumberFormat.Format = "0.0%";
-                wsSummary.Cell(sRow, 13).Style.Fill.BackgroundColor = r.ProjectRate.Value switch
+                wsSummary.Cell(sRow, 13).Value = (double)r.LatestExamScore.Value;
+                wsSummary.Cell(sRow, 13).Style.Fill.BackgroundColor = r.LatestExamScore.Value switch
                 {
                     >= 80 => XLColor.FromHtml("#c8e6c9"),
                     >= 60 => XLColor.FromHtml("#fff9c4"),
@@ -403,13 +397,27 @@ public class ExcelExportService : IExcelExportService
             }
             else { wsSummary.Cell(sRow, 13).Value = "—"; }
 
+            // Projects %
+            if (r.ProjectRate.HasValue)
+            {
+                wsSummary.Cell(sRow, 14).Value = r.ProjectRate.Value / 100.0;
+                wsSummary.Cell(sRow, 14).Style.NumberFormat.Format = "0.0%";
+                wsSummary.Cell(sRow, 14).Style.Fill.BackgroundColor = r.ProjectRate.Value switch
+                {
+                    >= 80 => XLColor.FromHtml("#c8e6c9"),
+                    >= 60 => XLColor.FromHtml("#fff9c4"),
+                    _     => XLColor.FromHtml("#ffcdd2")
+                };
+            }
+            else { wsSummary.Cell(sRow, 14).Value = "—"; }
+
             // Total Points
-            wsSummary.Cell(sRow, 14).Value = (double)r.TotalPoints;
-            wsSummary.Cell(sRow, 14).Style.NumberFormat.Format = "#,##0.##";
-            wsSummary.Cell(sRow, 14).Style.Font.Bold = true;
+            wsSummary.Cell(sRow, 15).Value = (double)r.TotalPoints;
+            wsSummary.Cell(sRow, 15).Style.NumberFormat.Format = "#,##0.##";
+            wsSummary.Cell(sRow, 15).Style.Font.Bold = true;
 
             // Row background for non-colour cells
-            foreach (int c in new[] { 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 14 })
+            foreach (int c in new[] { 1, 2, 3, 4, 6, 7, 8, 9, 10, 11, 15 })
                 wsSummary.Cell(sRow, c).Style.Fill.BackgroundColor = rowBg;
 
             sRow++;

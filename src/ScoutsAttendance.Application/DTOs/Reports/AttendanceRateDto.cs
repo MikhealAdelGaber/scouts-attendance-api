@@ -5,7 +5,8 @@ public class AttendanceRateDto
     public Guid   MemberId    { get; set; }
     public string MemberName  { get; set; } = string.Empty;
     public string TroopName   { get; set; } = string.Empty;
-    public string? AcademicGrade { get; set; }
+    public string? AcademicGrade  { get; set; }
+    public bool    HasNeckerchief { get; set; }
 
     // ── Attendance ────────────────────────────────────────────────────────────
     public int    TotalEvents { get; set; }

@@ -111,13 +111,43 @@ public class MemberImportService : IMemberImportService
         ws.Range(3, 1, 3, TotalCols).Style.Font.Italic = true;
         ws.Range(3, 1, 3, TotalCols).Style.Font.FontColor = XLColor.FromHtml("#5d4037");
 
-        // Data validation for Gender column
-        var genderValidation = ws.Range(4, ColGender, 2000, ColGender).CreateDataValidation();
-        genderValidation.List("\"Male,Female\"", true);
+        // ── Hidden "Lists" sheet — holds dropdown sources (grade list too long for inline) ──
+        var wsLists = wb.Worksheets.Add("Lists");
+        wsLists.Visibility = XLWorksheetVisibility.Hidden;
 
-        // Data validation for Foulard column
-        var foulardValidation = ws.Range(4, ColFoulard, 2000, ColFoulard).CreateDataValidation();
-        foulardValidation.List("\"Yes,No\"", true);
+        // Gender list (col A)
+        wsLists.Cell(1, 1).Value = "Male";
+        wsLists.Cell(2, 1).Value = "Female";
+
+        // Foulard list (col B)
+        wsLists.Cell(1, 2).Value = "Yes";
+        wsLists.Cell(2, 2).Value = "No";
+
+        // Academic Grade list (col C)
+        string[] grades =
+        [
+            "3 ابتدائي", "4 ابتدائي", "5 ابتدائي", "6 ابتدائي",
+            "1 اعدادي",  "2 اعدادي",  "3 اعدادي",
+            "1 ثانوي",   "2 ثانوي",   "3 ثانوي",
+            "1 جامعة",   "2 جامعة",   "3 جامعة",
+            "4 جامعة",   "5 جامعة",   "6 جامعة",
+            "خريج"
+        ];
+        for (int i = 0; i < grades.Length; i++)
+            wsLists.Cell(i + 1, 3).Value = grades[i];
+
+        // Data validation — apply from row 3 (sample row) to 2000
+        // Gender (col A of Lists)
+        var genderValidation = ws.Range(3, ColGender, 2000, ColGender).CreateDataValidation();
+        genderValidation.List(wsLists.Range(1, 1, 2, 1), true);
+
+        // Foulard (col B of Lists)
+        var foulardValidation = ws.Range(3, ColFoulard, 2000, ColFoulard).CreateDataValidation();
+        foulardValidation.List(wsLists.Range(1, 2, 2, 2), true);
+
+        // Academic Grade (col C of Lists)
+        var gradeValidation = ws.Range(3, ColGrade, 2000, ColGrade).CreateDataValidation();
+        gradeValidation.List(wsLists.Range(1, 3, grades.Length, 3), true);
 
         // Column widths
         ws.Column(ColFirstName).Width   = 18;
@@ -156,7 +186,7 @@ public class MemberImportService : IMemberImportService
             ["Mother Phone", "No",  "Mother's phone number"],
             ["Address",      "No",  "Member's home address"],
             ["Region",       "No",  "Region / area name (e.g. North, South)"],
-            ["Academic Grade","No", "e.g. Grade 1 … Grade 12"],
+            ["Academic Grade","No", "Select from dropdown: 3 ابتدائي … خريج"],
             ["Year Joined",  "No",  "4-digit year, e.g. 2022"],
             ["Has Foulard",  "No",  "Yes  OR  No  (default: No)"],
             ["Notes",        "No",  "Any free-text notes"],
